@@ -14,7 +14,159 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      uploads: {
+        Row: {
+          id: string
+          notes: string | null
+          reference_date: string | null
+          uploaded_at: string
+          user_id: string
+          wdu_count: number
+          wku_count: number
+          wmg_count: number
+        }
+        Insert: {
+          id?: string
+          notes?: string | null
+          reference_date?: string | null
+          uploaded_at?: string
+          user_id: string
+          wdu_count?: number
+          wku_count?: number
+          wmg_count?: number
+        }
+        Update: {
+          id?: string
+          notes?: string | null
+          reference_date?: string | null
+          uploaded_at?: string
+          user_id?: string
+          wdu_count?: number
+          wku_count?: number
+          wmg_count?: number
+        }
+        Relationships: []
+      }
+      wdu_rows: {
+        Row: {
+          cliente: string | null
+          id: number
+          pedido: string | null
+          sit_fase: string | null
+          upload_id: string
+        }
+        Insert: {
+          cliente?: string | null
+          id?: number
+          pedido?: string | null
+          sit_fase?: string | null
+          upload_id: string
+        }
+        Update: {
+          cliente?: string | null
+          id?: number
+          pedido?: string | null
+          sit_fase?: string | null
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wdu_rows_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wku_rows: {
+        Row: {
+          caixas: number
+          cliente: string | null
+          dt_conf_sep: string | null
+          fator_caixa: number
+          fracionado: number
+          id: number
+          nome: string | null
+          pct_cko: number | null
+          pct_sep: number | null
+          pedido: string | null
+          qt_item: number | null
+          sku: string | null
+          upload_id: string
+        }
+        Insert: {
+          caixas?: number
+          cliente?: string | null
+          dt_conf_sep?: string | null
+          fator_caixa?: number
+          fracionado?: number
+          id?: number
+          nome?: string | null
+          pct_cko?: number | null
+          pct_sep?: number | null
+          pedido?: string | null
+          qt_item?: number | null
+          sku?: string | null
+          upload_id: string
+        }
+        Update: {
+          caixas?: number
+          cliente?: string | null
+          dt_conf_sep?: string | null
+          fator_caixa?: number
+          fracionado?: number
+          id?: number
+          nome?: string | null
+          pct_cko?: number | null
+          pct_sep?: number | null
+          pedido?: string | null
+          qt_item?: number | null
+          sku?: string | null
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wku_rows_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wmg_rows: {
+        Row: {
+          fator: number | null
+          id: number
+          nome: string | null
+          sku: string | null
+          upload_id: string
+        }
+        Insert: {
+          fator?: number | null
+          id?: number
+          nome?: string | null
+          sku?: string | null
+          upload_id: string
+        }
+        Update: {
+          fator?: number | null
+          id?: number
+          nome?: string | null
+          sku?: string | null
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wmg_rows_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

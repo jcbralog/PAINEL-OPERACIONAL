@@ -11,7 +11,14 @@ export type WkuRaw = {
   pct_sep: number;
   pct_cko: number;
 };
-export type WmgRaw = { sku: string | null; fator: number; nome: string | null };
+export type WmgRaw = { 
+  sku: string | null; 
+  fator: number; 
+  nome: string | null;
+  sep: string | null;
+  cko: string | null;
+  cv: string | null;
+};
 export type WxdRaw = {
   cliente: string | null;
   pedido: string | null;
@@ -105,6 +112,9 @@ export function parseWmg(buf: ArrayBuffer): WmgRaw[] {
       sku: norm(pick(r, ["Cód. Merc.", "Cod. Merc.", "SKU"])),
       fator: num(pick(r, ["Fator"])),
       nome: norm(pick(r, ["Nome Mercadoria", "Mercadoria"])),
+      sep: norm(pick(r, ["Sep.", "Sep", "SEP"])),
+      cko: norm(pick(r, ["Cko.", "Cko", "CKO"])),
+      cv: norm(pick(r, ["Cv.", "Cv", "CV"])),
     }))
     .filter((r) => r.sku);
 }
@@ -129,9 +139,22 @@ export function buildFatorMap(wmgs: WmgRaw[][]): Map<string, number> {
   for (const wmg of wmgs) {
     for (const r of wmg) {
       if (!r.sku) continue;
-      const cur = m.get(r.sku) ?? 1;
+      
       const f = Math.floor(r.fator || 1);
-      if (f > cur) m.set(r.sku, f);
+      
+      // Só consideramos esse fator como "caixa fechada" (>1)
+      // se a embalagem estiver validada nas colunas SEP, CKO e CV com "X"
+      const hasSep = r.sep?.toLowerCase() === "x";
+      const hasCko = r.cko?.toLowerCase() === "x";
+      const hasCv = r.cv?.toLowerCase() === "x";
+      
+      let validFator = 1;
+      if (f > 1 && hasSep && hasCko && hasCv) {
+        validFator = f;
+      }
+
+      const cur = m.get(r.sku) ?? 1;
+      if (validFator > cur) m.set(r.sku, validFator);
     }
   }
   return m;

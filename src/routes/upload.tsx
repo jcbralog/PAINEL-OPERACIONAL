@@ -168,7 +168,10 @@ function UploadPage() {
       setStep("Salvando WMG...");
       await chunkInsert(
         "wmg_rows",
-        wmgFlat.map((r) => ({ ...r, upload_id: uploadId })),
+        wmgFlat.map((r) => {
+          const { sep: _s, cko: _c, cv: _v, ...rest } = r;
+          return { ...rest, upload_id: uploadId };
+        }),
         (p) => setProgress(5 + p * 0.15),
       );
       setStep("Salvando WXD (expedidos)...");

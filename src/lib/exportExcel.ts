@@ -2,337 +2,464 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { WkuRow, WxdRow } from "./loadUpload";
 
-// Cores Bralog Premium
-const C = {
-  headerBg: "0A2616", // Verde luxo profundo
-  headerFg: "FFFFFF",
-  kpiBg: "E8F2EC", // Fundo super leve para KPIs
-  kpiTitleFg: "143821",
-  kpiValueFg: "0A2616",
-  tableTitleBg: "123620", // Fundo do título da tabela
-  tableHeaderBg: "1B4228", // Verde médio
-  tableHeaderFg: "FFFFFF",
-  rowAltBg: "F7FBF8",
-  borderLight: "C1D5C8",
-  goldBg: "B8860B", // Dourado Bralog
-  goldFg: "FFFFFF"
+// ─── Paleta executiva Bralog ───────────────────────────────────────────────────
+const G = {
+  // Verdes
+  ink:      "071E0F",   // preto-verde para textos principais
+  deep:     "0D2E18",   // verde noite (cabeçalho primário)
+  forest:   "1A4D2E",   // verde floresta (cabeçalho secundário)
+  pine:     "2E7D4F",   // verde pinheiro (destaques)
+  sage:     "5A9E73",   // verde sálvia (subtítulos)
+  mint:     "D4EDDA",   // verde menta (linhas alternadas / fundos suaves)
+  white:    "FFFFFF",
+
+  // Dourado executivo
+  gold:     "8B6914",   // dourado escuro
+  goldMid:  "C9A84C",   // dourado médio (bordas/acentos)
+  goldPale: "FDF5DC",   // dourado pálido (fundo KPI destaque)
+
+  // Tipo caixa / fração
+  boxBg:    "E8F5E9",   // verde muito claro (caixa fechada)
+  boxText:  "1A4D2E",
+  fracBg:   "FFF8ED",   // âmbar muito claro (fração)
+  fracText: "7B4F00",
+
+  // Neutros
+  border:   "B2CCBA",   // borda suave
+  borderMd: "5A9E73",   // borda média
+  rowAlt:   "F4FAF6",   // linha alternada
+  muted:    "4A6B55",   // texto secundário
 };
 
+// ─── Utilitários ──────────────────────────────────────────────────────────────
+function fill(argb: string): ExcelJS.Fill {
+  return { type: "pattern", pattern: "solid", fgColor: { argb: argb } };
+}
+function border(argb: string, style: ExcelJS.BorderStyle = "thin"): ExcelJS.Borders {
+  const b = { style, color: { argb: argb } };
+  return { top: b, bottom: b, left: b, right: b };
+}
+function font(
+  argb: string,
+  size = 10,
+  bold = false,
+  italic = false
+): Partial<ExcelJS.Font> {
+  return { name: "Calibri", color: { argb: argb }, size, bold, italic };
+}
+function align(
+  h: ExcelJS.Alignment["horizontal"] = "left",
+  v: ExcelJS.Alignment["vertical"] = "middle",
+  wrap = false
+): Partial<ExcelJS.Alignment> {
+  return { horizontal: h, vertical: v, wrapText: wrap };
+}
+
+const pct = (n: number, d: number) =>
+  d > 0 ? ((n / d) * 100).toFixed(1) + "%" : "0.0%";
+
+// ─── Cabeçalho de página com identidade Bralog ───────────────────────────────
+function pageHeader(
+  ws: ExcelJS.Worksheet,
+  title: string,
+  subtitle: string,
+  cols: number
+) {
+  const last = String.fromCharCode(64 + cols);
+
+  // Faixa 1: empresa (2 linhas mescladas)
+  ws.mergeCells(`A1:${last}2`);
+  const c1 = ws.getCell("A1");
+  c1.value = "BRALOG  LOGÍSTICA";
+  c1.fill = fill(G.deep);
+  c1.font = font(G.white, 22, true);
+  c1.alignment = align("center", "middle");
+  ws.getRow(1).height = 22;
+  ws.getRow(2).height = 18;
+
+  // Faixa 2: título do relatório
+  ws.mergeCells(`A3:${last}3`);
+  const c3 = ws.getCell("A3");
+  c3.value = title.toUpperCase();
+  c3.fill = fill(G.forest);
+  c3.font = font(G.white, 13, true);
+  c3.alignment = align("center", "middle");
+  ws.getRow(3).height = 26;
+
+  // Faixa 3: subtítulo + data
+  ws.mergeCells(`A4:${last}4`);
+  const c4 = ws.getCell("A4");
+  c4.value = `${subtitle}   ·   ${new Date().toLocaleString("pt-BR")}`;
+  c4.fill = fill(G.pine);
+  c4.font = font(G.white, 9, false, true);
+  c4.alignment = align("center", "middle");
+  ws.getRow(4).height = 15;
+
+  // Linha separadora dourada
+  ws.mergeCells(`A5:${last}5`);
+  const c5 = ws.getCell("A5");
+  c5.fill = fill(G.goldMid);
+  ws.getRow(5).height = 3;
+
+  // Espaço
+  ws.getRow(6).height = 6;
+}
+
+// ─── Linha de cabeçalho de tabela ────────────────────────────────────────────
+function tableHeader(
+  ws: ExcelJS.Worksheet,
+  rowNum: number,
+  labels: (string | null)[],
+  bg = G.forest
+) {
+  const row = ws.getRow(rowNum);
+  row.height = 22;
+  labels.forEach((label, i) => {
+    const c = row.getCell(i + 1);
+    c.value = label;
+    c.fill = fill(bg);
+    c.font = font(G.white, 10, true);
+    c.alignment = align("center", "middle");
+    c.border = border(G.deep, "medium");
+  });
+}
+
+// ─── Linha de dado ────────────────────────────────────────────────────────────
+function addDataRow(
+  ws: ExcelJS.Worksheet,
+  values: (string | number | null)[],
+  idx: number,
+  cellStyles?: Record<number, { bg?: string; fg?: string; bold?: boolean; hAlign?: ExcelJS.Alignment["horizontal"] }>
+) {
+  const row = ws.addRow(values);
+  row.height = 17;
+  row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+    const s = cellStyles?.[colNum];
+    const isNum = typeof cell.value === "number";
+    cell.fill = fill(s?.bg ?? (idx % 2 === 0 ? G.white : G.rowAlt));
+    cell.font = font(s?.fg ?? G.ink, 10, s?.bold ?? false);
+    cell.alignment = align(s?.hAlign ?? (isNum ? "center" : "left"), "middle");
+    cell.border = border(G.border);
+  });
+}
+
+// ─── Título de seção interno ──────────────────────────────────────────────────
+function sectionTitle(
+  ws: ExcelJS.Worksheet,
+  rowNum: number,
+  text: string,
+  cols: number,
+  bg = G.deep
+) {
+  const last = String.fromCharCode(64 + cols);
+  ws.mergeCells(`A${rowNum}:${last}${rowNum}`);
+  const c = ws.getCell(`A${rowNum}`);
+  c.value = `  ${text}`;
+  c.fill = fill(bg);
+  c.font = font(G.white, 11, true);
+  c.alignment = align("left", "middle");
+  c.border = border(G.goldMid, "medium");
+  ws.getRow(rowNum).height = 20;
+}
+
+// ─── Mapa de KPIs disponíveis ─────────────────────────────────────────────────
+type KpiId = "produzidos" | "separados" | "checkout" | "embarcados" | "itens" | "skus";
+
+function getKpiData(id: KpiId, kpis: any, pctFn: typeof pct) {
+  const total = kpis.pedidos;
+  switch (id) {
+    case "produzidos": return {
+      label: "PRODUZIDOS NO DIA",
+      value: kpis.pedidosProduzidos,
+      sub: "Têm Dt. Conf. Sep.",
+      pctVal: "",
+    };
+    case "separados": return {
+      label: "SEPARADOS 100%",
+      value: kpis.pedidosSep,
+      sub: `de ${total} pedidos`,
+      pctVal: pctFn(kpis.pedidosSep, total),
+    };
+    case "checkout": return {
+      label: "CHECKOUT 100%",
+      value: kpis.pedidosCko,
+      sub: `${(kpis.linhasCko ?? 0).toLocaleString("pt-BR")} linhas`,
+      pctVal: pctFn(kpis.pedidosCko, total),
+    };
+    case "embarcados": return {
+      label: "EMBARCADOS",
+      value: kpis.expedidos,
+      sub: "Sit. Fase = Emb. Conf.",
+      pctVal: pctFn(kpis.expedidos, total),
+    };
+    case "itens": return {
+      label: "TOTAL DE ITENS",
+      value: kpis.unidades,
+      sub: `${(kpis.linhas ?? 0).toLocaleString("pt-BR")} linhas WKU`,
+      pctVal: "",
+    };
+    case "skus": return {
+      label: "SKUs DISTINTOS",
+      value: kpis.skus,
+      sub: "produtos únicos no dia",
+      pctVal: "",
+    };
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EXPORTAÇÃO PRINCIPAL
+// ═════════════════════════════════════════════════════════════════════════════
 export async function exportDashboardExcel(data: {
   wku: WkuRow[];
   wxd: WxdRow[];
   kpis: any;
   faseMap: Map<string, string>;
+  kpiOrder?: KpiId[];
 }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bralog Dashboard";
   wb.created = new Date();
 
-  const pct = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
-
-  // =========================================================
-  // ABA 1: RESUMO & APICE/BEAUTY (Visão Premium)
-  // =========================================================
-  const ws1 = wb.addWorksheet("Resumo Operacional", {
-    views: [{ showGridLines: false }],
-  });
-
-  // Cabeçalho Principal Luxuoso
-  ws1.mergeCells("A1:E3");
-  const t1 = ws1.getCell("A1");
-  t1.value = "BRALOG LOGÍSTICA | DASHBOARD OPERACIONAL";
-  t1.font = { name: "Segoe UI", size: 24, bold: true, color: { argb: C.headerFg } };
-  t1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.headerBg } };
-  t1.alignment = { vertical: "middle", horizontal: "center" };
-
-  ws1.mergeCells("A4:E4");
-  const sub1 = ws1.getCell("A4");
-  sub1.value = `Relatório Gerado em ${new Date().toLocaleString("pt-BR")}`;
-  sub1.font = { name: "Segoe UI", size: 10, italic: true, color: { argb: "E8F2EC" } };
-  sub1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "1B4228" } };
-  sub1.alignment = { vertical: "middle", horizontal: "center" };
-
-  // Bloco de KPIs (Removidos os dados brutos de caixa/fração que causavam confusão)
-  const kpiHeaders = ["Total de SKUs", "Total de Pedidos", "Total de Itens", "Checkout 100%", "Expedidos"];
-  const kpiValues = [
-    data.kpis.skus,
-    data.kpis.pedidos,
-    data.kpis.unidades,
-    data.kpis.pedidosCko,
-    data.kpis.expedidos
+  const order: KpiId[] = data.kpiOrder ?? [
+    "produzidos", "separados", "checkout", "embarcados", "itens", "skus",
   ];
 
-  for (let i = 0; i < 5; i++) {
-    const col = String.fromCharCode(65 + i); // A, B, C...
-    const th = ws1.getCell(`${col}6`);
-    th.value = kpiHeaders[i];
-    th.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: C.kpiTitleFg } };
-    th.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.kpiBg } };
-    th.alignment = { vertical: "middle", horizontal: "center" };
-    th.border = { top: { style: "thin", color: { argb: C.borderLight } }, left: { style: "thin", color: { argb: C.borderLight } }, right: { style: "thin", color: { argb: C.borderLight } } };
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ABA 1 ─ RESUMO OPERACIONAL
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ws1 = wb.addWorksheet("Resumo Operacional", { views: [{ showGridLines: false }] });
+  pageHeader(ws1, "Dashboard Operacional", "Resumo Geral · KPIs do Dia · Relatório Ápice/Beauty", 6);
 
-    const tv = ws1.getCell(`${col}7`);
-    tv.value = kpiValues[i];
-    tv.font = { name: "Segoe UI", size: 18, bold: true, color: { argb: C.kpiValueFg } };
-    tv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.kpiBg } };
-    tv.alignment = { vertical: "middle", horizontal: "center" };
-    tv.border = { bottom: { style: "thin", color: { argb: C.borderLight } }, left: { style: "thin", color: { argb: C.borderLight } }, right: { style: "thin", color: { argb: C.borderLight } } };
-    
-    ws1.getColumn(i + 1).width = 22;
+  // ── KPI Cards (segue a ordem do dashboard) ─────────────────────────────────
+  sectionTitle(ws1, 7, "KPIs DO DIA  —  na ordem que você organizou", 6, G.deep);
+  ws1.getRow(8).height = 6;
+
+  // Cada KPI ocupa 3 linhas: label | valor | sub+pct
+  // Dois por linha (3 colunas cada), em 3 pares
+  const pairs = [
+    [order[0], order[1]],
+    [order[2], order[3]],
+    [order[4], order[5]],
+  ].filter(p => p.some(Boolean));
+
+  let kpiRow = 9;
+  for (const pair of pairs) {
+    ws1.getRow(kpiRow).height = 14;
+    ws1.getRow(kpiRow + 1).height = 30;
+    ws1.getRow(kpiRow + 2).height = 13;
+
+    for (let side = 0; side < 2; side++) {
+      const id = pair[side] as KpiId | undefined;
+      if (!id) continue;
+      const kpi = getKpiData(id, data.kpis, pct);
+      const startCol = side === 0 ? 1 : 4;     // A ou D
+      const endCol   = side === 0 ? 3 : 6;
+      const colLetter = (n: number) => String.fromCharCode(64 + n);
+
+      // Label row
+      ws1.mergeCells(kpiRow, startCol, kpiRow, endCol);
+      const lc = ws1.getCell(kpiRow, startCol);
+      lc.value = kpi.label;
+      lc.fill = fill(G.forest);
+      lc.font = font(G.mint, 9, true);
+      lc.alignment = align("center", "middle");
+      lc.border = border(G.deep, "medium");
+
+      // Value row
+      ws1.mergeCells(kpiRow + 1, startCol, kpiRow + 1, endCol);
+      const vc = ws1.getCell(kpiRow + 1, startCol);
+      vc.value = kpi.value;
+      vc.fill = fill(id === "embarcados" ? G.goldPale : G.boxBg);
+      vc.font = font(id === "embarcados" ? G.gold : G.deep, 22, true);
+      vc.alignment = align("center", "middle");
+      vc.border = border(id === "embarcados" ? G.goldMid : G.borderMd, "medium");
+
+      // Sub row
+      ws1.mergeCells(kpiRow + 2, startCol, kpiRow + 2, endCol);
+      const sc = ws1.getCell(kpiRow + 2, startCol);
+      sc.value = kpi.pctVal ? `${kpi.sub}  ·  ${kpi.pctVal}` : kpi.sub;
+      sc.fill = fill(G.mint);
+      sc.font = font(G.sage, 9, false, true);
+      sc.alignment = align("center", "middle");
+      sc.border = border(G.border);
+    }
+    kpiRow += 4; // 3 linhas + 1 espaço
   }
 
-  // Seção Exclusiva: Relatório de Pedidos Caixa Fechada vs Fração (APICE / BEAUTY)
-  ws1.getRow(9).height = 20;
-  ws1.mergeCells("A9:E9");
-  const abTitle = ws1.getCell("A9");
-  abTitle.value = "  ► RELATÓRIO DE PEDIDOS: CAIXA FECHADA vs FRAÇÃO (APICE E BEAUTY)";
-  abTitle.font = { name: "Segoe UI", size: 12, bold: true, color: { argb: C.goldFg } };
-  abTitle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tableTitleBg } };
-  abTitle.alignment = { vertical: "middle", horizontal: "left" };
+  // ── Relatório Ápice/Beauty ──────────────────────────────────────────────────
+  const abStart = kpiRow + 1;
+  sectionTitle(ws1, abStart, "RELATÓRIO  —  CAIXA FECHADA vs FRAÇÃO  ·  ÁPICE E BEAUTY", 6, G.deep);
+  let r = abStart + 2;
 
-  let currentRow = 11;
+  if (data.kpis.relatorioAB?.length > 0) {
+    for (const rel of data.kpis.relatorioAB) {
+      // Nome do cliente
+      ws1.mergeCells(`B${r}:E${r}`);
+      const nc = ws1.getCell(`B${r}`);
+      nc.value = rel.cliente;
+      nc.fill = fill(G.forest);
+      nc.font = font(G.white, 11, true);
+      nc.alignment = align("center", "middle");
+      nc.border = border(G.deep, "medium");
+      ws1.getRow(r).height = 20;
+      r++;
 
-  if (data.kpis.relatorioAB && data.kpis.relatorioAB.length > 0) {
-    data.kpis.relatorioAB.forEach((rel: any) => {
-      // Nome do Cliente
-      ws1.mergeCells(`B${currentRow}:D${currentRow}`);
-      const cName = ws1.getCell(`B${currentRow}`);
-      cName.value = rel.cliente;
-      cName.font = { name: "Segoe UI", size: 11, bold: true, color: { argb: "FFFFFF" } };
-      cName.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tableHeaderBg } };
-      cName.alignment = { vertical: "middle", horizontal: "center" };
-      cName.border = { top: { style: "medium", color: { argb: C.tableTitleBg } }, bottom: { style: "medium", color: { argb: C.tableTitleBg } }, left: { style: "medium", color: { argb: C.tableTitleBg } }, right: { style: "medium", color: { argb: C.tableTitleBg } } };
-      currentRow++;
+      // Cabeçalhos
+      tableHeader(ws1, r, [null, "TIPO", "Nº PEDIDOS", "% DO TOTAL", null, null], G.pine);
+      r++;
 
-      // Headers da Tabela
-      const hdrs = ["TIPO", "Nº PEDIDOS", "% DO TOTAL"];
-      hdrs.forEach((h, i) => {
-        const cell = ws1.getCell(currentRow, i + 2); // Começa na coluna B
-        cell.value = h;
-        cell.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: "FFFFFF" } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "2E593F" } };
-        cell.alignment = { vertical: "middle", horizontal: "center" };
+      const rowData: [string, number, string][] = [
+        ["Caixa Fechada", rel.caixa, pct(rel.caixa, rel.total)],
+        ["Fração",        rel.fracao, pct(rel.fracao, rel.total)],
+      ];
+      const rowBgs = [G.boxBg, G.fracBg];
+      const rowFgs = [G.boxText, G.fracText];
+
+      rowData.forEach(([label, val, p], i) => {
+        [2, 3, 4].forEach(col => {
+          const vals: Record<number, string | number> = { 2: label, 3: val, 4: p };
+          const c = ws1.getCell(r, col);
+          c.value = vals[col];
+          c.fill = fill(rowBgs[i]);
+          c.font = font(rowFgs[i], 10, col === 2);
+          c.alignment = align("center", "middle");
+          c.border = border(G.border);
+        });
+        ws1.getRow(r).height = 17;
+        r++;
       });
-      currentRow++;
 
-      // Linha Caixa Fechada
-      ws1.getCell(currentRow, 2).value = "Caixa Fechada";
-      ws1.getCell(currentRow, 2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C8E6C9" } };
-      ws1.getCell(currentRow, 2).font = { bold: true, color: { argb: "0A2616" } };
-      ws1.getCell(currentRow, 3).value = rel.caixa;
-      ws1.getCell(currentRow, 3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C8E6C9" } };
-      ws1.getCell(currentRow, 4).value = `${pct(rel.caixa, rel.total).toFixed(1)}%`;
-      ws1.getCell(currentRow, 4).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "C8E6C9" } };
-      ws1.getCell(currentRow, 3).alignment = { horizontal: "center" };
-      ws1.getCell(currentRow, 4).alignment = { horizontal: "center" };
-      currentRow++;
-
-      // Linha Fração
-      ws1.getCell(currentRow, 2).value = "Fração";
-      ws1.getCell(currentRow, 3).value = rel.fracao;
-      ws1.getCell(currentRow, 4).value = `${pct(rel.fracao, rel.total).toFixed(1)}%`;
-      ws1.getCell(currentRow, 2).font = { bold: true, color: { argb: "0A2616" } };
-      ws1.getCell(currentRow, 3).alignment = { horizontal: "center" };
-      ws1.getCell(currentRow, 4).alignment = { horizontal: "center" };
-      currentRow++;
-
-      // Linha Total
-      ws1.getCell(currentRow, 2).value = "TOTAL";
-      ws1.getCell(currentRow, 3).value = rel.total;
-      ws1.getCell(currentRow, 4).value = "100.0%";
+      // Total
       [2, 3, 4].forEach(col => {
-        const c = ws1.getCell(currentRow, col);
-        c.font = { name: "Segoe UI", bold: true, color: { argb: "FFFFFF" } };
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "2E593F" } };
-        c.alignment = { horizontal: "center" };
+        const vals: Record<number, string | number> = { 2: "TOTAL", 3: rel.total, 4: "100.0%" };
+        const c = ws1.getCell(r, col);
+        c.value = vals[col];
+        c.fill = fill(G.forest);
+        c.font = font(G.white, 10, true);
+        c.alignment = align("center", "middle");
+        c.border = border(G.deep, "medium");
       });
-      currentRow += 3; // Espaço para o próximo cliente
-    });
+      ws1.getRow(r).height = 18;
+      r += 3;
+    }
   } else {
-    ws1.mergeCells(`A11:E11`);
-    const noData = ws1.getCell("A11");
-    noData.value = "Não há pedidos para Apice e Beauty neste relatório.";
-    noData.alignment = { horizontal: "center" };
-    noData.font = { italic: true };
+    ws1.mergeCells(`A${r}:F${r}`);
+    const nd = ws1.getCell(`A${r}`);
+    nd.value = "Não há pedidos Ápice/Beauty neste relatório.";
+    nd.font = font(G.muted, 10, false, true);
+    nd.alignment = align("center");
   }
 
+  // Larguras aba 1
+  [5, 28, 20, 20, 28, 5].forEach((w, i) => { ws1.getColumn(i + 1).width = w; });
 
-  // =========================================================
-  // ABA 2: CONSOLIDAÇÃO POR SKU
-  // =========================================================
-  const ws2 = wb.addWorksheet("Consolidação por SKU", { views: [{ showGridLines: false }] });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ABA 2 ─ DETALHAMENTO ÁPICE · BEAUTY  (com qtd real)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ws2 = wb.addWorksheet("Detalhamento Ápice·Beauty", { views: [{ showGridLines: false }] });
+  pageHeader(ws2, "Detalhamento por Pedido — Ápice e Beauty", "Caixas Fechadas · Frações · Total Real de Itens", 5);
 
-  ws2.mergeCells("A1:E3");
-  const t2 = ws2.getCell("A1");
-  t2.value = "BRALOG LOGÍSTICA | CONSOLIDAÇÃO POR SKU";
-  t2.font = { name: "Segoe UI", size: 20, bold: true, color: { argb: C.headerFg } };
-  t2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.headerBg } };
-  t2.alignment = { vertical: "middle", horizontal: "center" };
+  tableHeader(ws2, 7, ["Pedido", "Cliente", "Caixas Fechadas", "Unidades Fracionadas", "Total de Itens"], G.forest);
+  ws2.autoFilter = "A7:E7";
 
-  const skuCols = [
-    { header: "SKU", key: "sku", width: 18 },
-    { header: "Produto / Descrição", key: "nome", width: 60 },
-    { header: "Nº Pedidos", key: "pedidos", width: 15 },
-    { header: "Qtd. Total", key: "qtd", width: 15 },
-  ];
-
-  const skuRow = ws2.getRow(5);
-  skuCols.forEach((col, i) => {
-    const c = skuRow.getCell(i + 1);
-    c.value = col.header;
-    c.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: C.tableHeaderFg } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tableHeaderBg } };
-    c.alignment = { vertical: "middle", horizontal: "center" };
-    c.border = { top: { style: "thin", color: { argb: C.borderLight } }, bottom: { style: "thin", color: { argb: C.borderLight } } };
-    ws2.getColumn(i + 1).width = col.width;
-  });
-
-  // Habilitar filtros automáticos do Excel para a linha de cabeçalho
-  ws2.autoFilter = 'A5:D5';
-
-  const mapSku = new Map<string, { nome: string; qt: number; pedidos: Set<string>; sepCount: number }>();
-  for (const r of data.wku) {
-    if (!r.sku) continue;
-    const cur = mapSku.get(r.sku) ?? { nome: r.nome ?? "", qt: 0, pedidos: new Set(), sepCount: 0 };
-    cur.qt += r.qt_item || 0;
-    if (r.pedido) cur.pedidos.add(r.pedido);
-    if (r.pct_sep === 100) cur.sepCount++;
-    mapSku.set(r.sku, cur);
+  const APICE_BEAUTY = /apice|ápice|beauty/i;
+  const abMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number }>();
+  for (const r2 of data.wku) {
+    if (!r2.cliente || !APICE_BEAUTY.test(r2.cliente) || !r2.pedido) continue;
+    const cur = abMap.get(r2.pedido) ?? { cliente: r2.cliente, caixas: 0, fracao: 0, qtd: 0 };
+    cur.caixas += r2.caixas || 0;
+    cur.fracao += r2.fracionado || 0;
+    cur.qtd   += r2.qt_item || 0;
+    abMap.set(r2.pedido, cur);
   }
+  const abList = Array.from(abMap.entries())
+    .map(([pedido, v]) => ({ pedido, ...v }))
+    .sort((a, b) => a.cliente.localeCompare(b.cliente) || a.pedido.localeCompare(b.pedido));
 
-  const sortedSkus = Array.from(mapSku.entries()).sort((a, b) => b[1].qt - a[1].qt);
-
-  sortedSkus.forEach(([sku, v], idx) => {
-    const r = ws2.addRow([
-      sku,
-      v.nome,
-      v.pedidos.size,
-      v.qt
-    ]);
-
-    r.eachCell((c, i) => {
-      c.font = { name: "Segoe UI", size: 10, color: { argb: "000000" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: idx % 2 === 0 ? "FFFFFF" : C.rowAltBg } };
-      c.alignment = { vertical: "middle", horizontal: i === 2 ? "left" : "center" };
-      c.border = { bottom: { style: "thin", color: { argb: "E0E0E0" } } };
+  abList.forEach((p, idx) => {
+    addDataRow(ws2, [p.pedido, p.cliente, p.caixas, p.fracao, p.qtd], idx, {
+      3: { bg: p.caixas > 0 ? G.boxBg : undefined, fg: p.caixas > 0 ? G.boxText : undefined, hAlign: "center" },
+      4: { bg: p.fracao > 0 ? G.fracBg : undefined, fg: p.fracao > 0 ? G.fracText : undefined, hAlign: "center" },
+      5: { bg: G.boxBg, fg: G.deep, bold: true, hAlign: "center" },
     });
   });
 
+  if (abList.length === 0) {
+    const emptyRow = ws2.addRow(["Nenhum pedido encontrado.", "", "", "", ""]);
+    emptyRow.getCell(1).font = font(G.muted, 10, false, true);
+  }
 
-  // =========================================================
-  // ABA 3: DETALHES POR PEDIDO
-  // =========================================================
-  const ws3 = wb.addWorksheet("Detalhes por Pedido", { views: [{ showGridLines: false }] });
-  
-  ws3.mergeCells("A1:E3");
-  const t3 = ws3.getCell("A1");
-  t3.value = "BRALOG LOGÍSTICA | DETALHES POR PEDIDO";
-  t3.font = { name: "Segoe UI", size: 20, bold: true, color: { argb: C.headerFg } };
-  t3.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.headerBg } };
-  t3.alignment = { vertical: "middle", horizontal: "center" };
+  [20, 48, 18, 20, 20].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
 
-  const pedCols = [
-    { header: "Pedido", key: "pedido", width: 20 },
-    { header: "Cliente", key: "cliente", width: 45 },
-    { header: "Sep 100% (Qtd. Itens)", key: "sep", width: 20 },
-    { header: "Cko 100% (Qtd. Itens)", key: "cko", width: 20 },
-    { header: "Situação Fase", key: "fase", width: 25 },
-  ];
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ABA 3 ─ CONSOLIDAÇÃO POR SKU
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ws3 = wb.addWorksheet("Consolidação por SKU", { views: [{ showGridLines: false }] });
+  pageHeader(ws3, "Consolidação por SKU", "Top SKUs por Quantidade Total de Itens", 4);
 
-  const pRow = ws3.getRow(5);
-  pedCols.forEach((col, i) => {
-    const c = pRow.getCell(i + 1);
-    c.value = col.header;
-    c.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: C.tableHeaderFg } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tableHeaderBg } };
-    c.alignment = { vertical: "middle", horizontal: "center" };
-    c.border = { top: { style: "thin", color: { argb: C.borderLight } }, bottom: { style: "thin", color: { argb: C.borderLight } } };
-    ws3.getColumn(i + 1).width = col.width;
-  });
+  tableHeader(ws3, 7, ["SKU", "Produto / Descrição", "Nº Pedidos", "Qtd. Total de Itens"], G.forest);
+  ws3.autoFilter = "A7:D7";
 
-  // Habilitar filtros para poder filtrar por Cliente, Pedido, etc.
-  ws3.autoFilter = 'A5:E5';
+  const mapSku = new Map<string, { nome: string; qt: number; pedidos: Set<string> }>();
+  for (const rr of data.wku) {
+    if (!rr.sku) continue;
+    const cur = mapSku.get(rr.sku) ?? { nome: rr.nome ?? "", qt: 0, pedidos: new Set() };
+    cur.qt += rr.qt_item || 0;
+    if (rr.pedido) cur.pedidos.add(rr.pedido);
+    mapSku.set(rr.sku, cur);
+  }
+  Array.from(mapSku.entries())
+    .sort((a, b) => b[1].qt - a[1].qt)
+    .forEach(([sku, v], idx) => {
+      addDataRow(ws3, [sku, v.nome, v.pedidos.size, v.qt], idx, {
+        4: { bold: true, hAlign: "center" },
+      });
+    });
 
-  const mapPed = new Map<string, { cliente: string; linhas: number; sep: number; cko: number }>();
-  for (const r of data.wku) {
-    if (!r.pedido) continue;
-    const cur = mapPed.get(r.pedido) ?? { cliente: r.cliente ?? "", linhas: 0, sep: 0, cko: 0 };
+  [18, 60, 14, 20].forEach((w, i) => { ws3.getColumn(i + 1).width = w; });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ABA 4 ─ DETALHES POR PEDIDO (todos os clientes)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ws4 = wb.addWorksheet("Detalhes por Pedido", { views: [{ showGridLines: false }] });
+  pageHeader(ws4, "Detalhes por Pedido", "Todos os Clientes · Separação · Checkout · Situação de Fase", 5);
+
+  tableHeader(ws4, 7, ["Pedido", "Cliente", "Sep 100% (itens)", "Cko 100% (itens)", "Situação de Fase"], G.forest);
+  ws4.autoFilter = "A7:E7";
+
+  const mapPed = new Map<string, { cliente: string; sep: number; cko: number; linhas: number }>();
+  for (const rr of data.wku) {
+    if (!rr.pedido) continue;
+    const cur = mapPed.get(rr.pedido) ?? { cliente: rr.cliente ?? "", sep: 0, cko: 0, linhas: 0 };
     cur.linhas++;
-    if (r.pct_sep === 100) cur.sep++;
-    if (r.pct_cko === 100) cur.cko++;
-    mapPed.set(r.pedido, cur);
+    if (rr.pct_sep === 100) cur.sep++;
+    if (rr.pct_cko === 100) cur.cko++;
+    mapPed.set(rr.pedido, cur);
   }
-
-  const sortedPeds = Array.from(mapPed.entries()).sort((a, b) => b[1].linhas - a[1].linhas);
-
-  sortedPeds.forEach(([pedido, v], idx) => {
-    const fase = data.faseMap.get(pedido) ?? "—";
-    const r = ws3.addRow([
-      pedido,
-      v.cliente,
-      v.sep,
-      v.cko,
-      fase
-    ]);
-
-    r.eachCell((c, i) => {
-      c.font = { name: "Segoe UI", size: 10, color: { argb: "000000" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: idx % 2 === 0 ? "FFFFFF" : C.rowAltBg } };
-      c.alignment = { vertical: "middle", horizontal: i === 2 ? "left" : "center" };
-      c.border = { bottom: { style: "thin", color: { argb: "E0E0E0" } } };
+  Array.from(mapPed.entries())
+    .sort((a, b) => b[1].linhas - a[1].linhas)
+    .forEach(([pedido, v], idx) => {
+      const fase = data.faseMap.get(pedido) ?? "—";
+      const isEmb = fase === "Emb. Conf.";
+      addDataRow(ws4, [pedido, v.cliente, v.sep, v.cko, fase], idx, {
+        5: {
+          bg: isEmb ? G.boxBg : undefined,
+          fg: isEmb ? G.deep : undefined,
+          bold: isEmb,
+          hAlign: "center",
+        },
+      });
     });
-  });
 
-  // =========================================================
-  // ABA 4: EXPEDIÇÃO (WXD)
-  // =========================================================
-  const ws4 = wb.addWorksheet("Expedição", { views: [{ showGridLines: false }] });
-  
-  ws4.mergeCells("A1:D3");
-  const t4 = ws4.getCell("A1");
-  t4.value = "BRALOG LOGÍSTICA | PLANILHA DE EXPEDIÇÃO (WXD)";
-  t4.font = { name: "Segoe UI", size: 20, bold: true, color: { argb: C.headerFg } };
-  t4.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.headerBg } };
-  t4.alignment = { vertical: "middle", horizontal: "center" };
+  [20, 48, 18, 18, 22].forEach((w, i) => { ws4.getColumn(i + 1).width = w; });
 
-  const wxdCols = [
-    { header: "Pedido", key: "pedido", width: 20 },
-    { header: "Cliente", key: "cliente", width: 45 },
-    { header: "Situação Fase", key: "fase", width: 25 },
-    { header: "Data Embarque", key: "data", width: 25 },
-  ];
-
-  const wxdRow = ws4.getRow(5);
-  wxdCols.forEach((col, i) => {
-    const c = wxdRow.getCell(i + 1);
-    c.value = col.header;
-    c.font = { name: "Segoe UI", size: 10, bold: true, color: { argb: C.tableHeaderFg } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tableHeaderBg } };
-    c.alignment = { vertical: "middle", horizontal: "center" };
-    c.border = { top: { style: "thin", color: { argb: C.borderLight } }, bottom: { style: "thin", color: { argb: C.borderLight } } };
-    ws4.getColumn(i + 1).width = col.width;
-  });
-
-  ws4.autoFilter = 'A5:D5';
-
-  data.wxd.forEach((r, idx) => {
-    const row = ws4.addRow([
-      r.pedido,
-      r.cliente,
-      r.sit_fase,
-      r.dt_embarque ? new Date(r.dt_embarque).toLocaleString("pt-BR") : "—"
-    ]);
-
-    row.eachCell((c, i) => {
-      c.font = { name: "Segoe UI", size: 10, color: { argb: "000000" } };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: idx % 2 === 0 ? "FFFFFF" : C.rowAltBg } };
-      c.alignment = { vertical: "middle", horizontal: i === 2 ? "left" : "center" };
-      c.border = { bottom: { style: "thin", color: { argb: "E0E0E0" } } };
-    });
-  });
-
-  // Exportar e fazer Download
-  const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  saveAs(blob, `Bralog_Resumo_Operacional_${new Date().toISOString().slice(0,10)}.xlsx`);
+  // ─── Download ──────────────────────────────────────────────────────────────
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    `Bralog_Operacional_${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
 }

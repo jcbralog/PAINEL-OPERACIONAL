@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { loadUpload, type WxdRow, type WkuRow } from "@/lib/loadUpload";
@@ -38,20 +38,29 @@ const APICE_BEAUTY = /apice|ápice|beauty/i;
 
 function KpiCard({
   icon: Icon, label, value, sub, progress, gold,
+  cardDragProps,
 }: {
   icon: typeof BarChart3; label: string; value: string; sub?: string;
   progress?: number; gold?: boolean;
+  cardDragProps?: React.HTMLAttributes<HTMLDivElement>;
 }) {
   return (
     <Card
-      className="relative overflow-hidden p-5 border-border/60"
+      className="relative overflow-hidden p-5 border-border/60 h-full flex flex-col"
       style={{
         background: "var(--gradient-luxe)",
         boxShadow: "var(--shadow-luxe)",
+        cursor: cardDragProps ? "grab" : undefined,
       }}
+      {...(cardDragProps as React.HTMLAttributes<HTMLDivElement>)}
     >
       <div className="absolute inset-0 opacity-[0.04]" style={{ background: "var(--gradient-primary)" }} />
-      <div className="relative flex items-start justify-between gap-3">
+      {cardDragProps && (
+        <div className="absolute top-2 right-2 opacity-30 select-none text-[11px] text-muted-foreground flex items-center gap-0.5">
+          <span title="Arraste para mover">⠇</span>
+        </div>
+      )}
+      <div className="relative flex items-start justify-between gap-3 flex-1">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">
             {label}
@@ -94,6 +103,25 @@ function DashboardPage() {
   const [search, setSearch] = useState("");
   const [clienteFilter, setClienteFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Drag-and-drop state for KPI cards
+  type KpiId = "produzidos" | "separados" | "checkout" | "embarcados" | "itens" | "skus";
+  const DEFAULT_ORDER: KpiId[] = ["produzidos", "separados", "checkout", "embarcados", "itens", "skus"];
+  const [kpiOrder, setKpiOrder] = useState<KpiId[]>(DEFAULT_ORDER);
+  const dragSrc = useRef<KpiId | null>(null);
+  const onDragStart = useCallback((id: KpiId) => { dragSrc.current = id; }, []);
+  const onDrop = useCallback((target: KpiId) => {
+    if (!dragSrc.current || dragSrc.current === target) return;
+    setKpiOrder(prev => {
+      const next = [...prev];
+      const si = next.indexOf(dragSrc.current!);
+      const ti = next.indexOf(target);
+      next.splice(si, 1);
+      next.splice(ti, 0, dragSrc.current!);
+      dragSrc.current = null;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     supabase
@@ -214,12 +242,26 @@ function DashboardPage() {
       return { cliente, caixa, fracao, total: caixa + fracao };
     });
 
+    // Detalhamento por PEDIDO (Apice/Beauty) — caixas e frações por pedido
+    const abPedidosMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number }>();
+    for (const r of ab) {
+      if (!r.pedido) continue;
+      const cur = abPedidosMap.get(r.pedido) ?? { cliente: r.cliente ?? "", caixas: 0, fracao: 0, qtd: 0 };
+      cur.caixas += r.caixas || 0;
+      cur.fracao += r.fracionado || 0;
+      cur.qtd += r.qt_item || 0;  // total real de itens (unidades) do pedido
+      abPedidosMap.set(r.pedido, cur);
+    }
+    const abPedidos = Array.from(abPedidosMap.entries())
+      .map(([pedido, v]) => ({ pedido, ...v }))
+      .sort((a, b) => a.cliente.localeCompare(b.cliente) || a.pedido.localeCompare(b.pedido));
+
     return {
       linhas, linhasSep, linhasCko,
       pedidos, pedidosSep, pedidosCko, pedidosProduzidos: pedidosProduzidos.size,
       skus, unidades, expedidos,
       caixasFechadas, unidFracionadas,
-      relatorioAB,
+      relatorioAB, abPedidos,
     };
   }, [filtered, faseMap]);
 
@@ -337,7 +379,7 @@ function DashboardPage() {
           <Button
             variant="outline"
             className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-            onClick={() => exportDashboardExcel({ wku: filtered, wxd: filteredWxd, kpis, faseMap })}
+            onClick={() => exportDashboardExcel({ wku: filtered, wxd: filteredWxd, kpis, faseMap, kpiOrder })}
             disabled={!selected || loading}
           >
             <Download className="size-4" /> Exportar Planilha
@@ -429,54 +471,39 @@ function DashboardPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Bloco PEDIDOS */}
+                     {/* Cards KPI — clique e segure para arrastar */}
                     <div>
                       <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-                        <Package className="size-3.5" /> Pedidos
+                        <Package className="size-3.5" /> KPIs — clique e arraste para reordenar
                       </h2>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <KpiCard
-                          icon={Calendar} label="Produzidos no dia" value={kpis.pedidosProduzidos.toLocaleString("pt-BR")}
-                          sub="Têm Dt. Conf. Sep."
-                        />
-                        <KpiCard
-                          icon={CheckCheck} label="Separados (% Sep = 100)"
-                          value={kpis.pedidosSep.toLocaleString("pt-BR")}
-                          sub={`de ${kpis.pedidos} total`}
-                          progress={pct(kpis.pedidosSep, kpis.pedidos)}
-                        />
-                        <KpiCard
-                          icon={PackageCheck} label="Checkout (% Cko = 100)"
-                          value={kpis.pedidosCko.toLocaleString("pt-BR")}
-                          sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`}
-                          progress={pct(kpis.pedidosCko, kpis.pedidos)}
-                        />
-                        <KpiCard
-                          icon={Truck} label="Embarcados (Emb. Conf.)"
-                          value={kpis.expedidos.toLocaleString("pt-BR")}
-                          sub="Sit. Fase = Emb. Conf."
-                          progress={pct(kpis.expedidos, kpis.pedidos)}
-                          gold
-                        />
-                      </div>
-                    </div>
-
-                    {/* Bloco ITENS */}
-                    <div>
-                      <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-                        <Layers className="size-3.5" /> Itens
-                      </h2>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <KpiCard
-                          icon={Tag} label="Total de itens (Qt. Ítem)"
-                          value={kpis.unidades.toLocaleString("pt-BR")}
-                          sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`}
-                        />
-                        <KpiCard
-                          icon={Boxes} label="SKUs distintos (Cód. Merc.)"
-                          value={kpis.skus.toLocaleString("pt-BR")}
-                          sub="produtos únicos no dia"
-                        />
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+                        {kpiOrder.map((id) => {
+                          const cardDragProps = {
+                            draggable: true,
+                            onDragStart: () => onDragStart(id),
+                            onDragOver: (e: React.DragEvent) => e.preventDefault(),
+                            onDrop: () => onDrop(id),
+                          };
+                          if (id === "produzidos") return (
+                            <KpiCard key={id} icon={Calendar} label="Produzidos no dia" value={kpis.pedidosProduzidos.toLocaleString("pt-BR")} sub="Têm Dt. Conf. Sep." cardDragProps={cardDragProps} />
+                          );
+                          if (id === "separados") return (
+                            <KpiCard key={id} icon={CheckCheck} label="Separados (% Sep = 100)" value={kpis.pedidosSep.toLocaleString("pt-BR")} sub={`de ${kpis.pedidos} total`} progress={pct(kpis.pedidosSep, kpis.pedidos)} cardDragProps={cardDragProps} />
+                          );
+                          if (id === "checkout") return (
+                            <KpiCard key={id} icon={PackageCheck} label="Checkout (% Cko = 100)" value={kpis.pedidosCko.toLocaleString("pt-BR")} sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`} progress={pct(kpis.pedidosCko, kpis.pedidos)} cardDragProps={cardDragProps} />
+                          );
+                          if (id === "embarcados") return (
+                            <KpiCard key={id} icon={Truck} label="Embarcados (Emb. Conf.)" value={kpis.expedidos.toLocaleString("pt-BR")} sub="Sit. Fase = Emb. Conf." progress={pct(kpis.expedidos, kpis.pedidos)} gold cardDragProps={cardDragProps} />
+                          );
+                          if (id === "itens") return (
+                            <KpiCard key={id} icon={Tag} label="Total de itens (Qt. Ítem)" value={kpis.unidades.toLocaleString("pt-BR")} sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`} cardDragProps={cardDragProps} />
+                          );
+                          if (id === "skus") return (
+                            <KpiCard key={id} icon={Boxes} label="SKUs distintos (Cód. Merc.)" value={kpis.skus.toLocaleString("pt-BR")} sub="produtos únicos no dia" cardDragProps={cardDragProps} />
+                          );
+                          return null;
+                        })}
                       </div>
                     </div>
 
@@ -642,6 +669,7 @@ function DashboardPage() {
               </TabsContent>
 
               <TabsContent value="produtos" className="space-y-6">
+                {/* Grade 2 colunas: Top Clientes + Tabelas Resumo */}
                 <div className="grid lg:grid-cols-2 gap-6">
                   <Card className="p-6">
                     <h3 className="font-semibold mb-4">Top clientes (pedidos)</h3>
@@ -649,27 +677,14 @@ function DashboardPage() {
                       <BarChart data={topClientes} layout="vertical" margin={{ left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                         <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
-                        <YAxis
-                          type="category" dataKey="cliente"
-                          stroke="var(--muted-foreground)" fontSize={11}
-                          width={140}
-                          tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 18) + "…" : v)}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            background: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                          }}
-                        />
+                        <YAxis type="category" dataKey="cliente" stroke="var(--muted-foreground)" fontSize={11} width={140} tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 18) + "…" : v)} />
+                        <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} />
                         <Bar dataKey="pedidos" fill={C.primary} radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </Card>
-
-                  {/* Caixas vs Fração: % de pedidos */}
                   {kpis.relatorioAB.length > 0 && (
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {kpis.relatorioAB.map((rel) => (
                         <div key={rel.cliente} className="rounded-lg overflow-hidden border border-border bg-card">
                           <div className="bg-[#1B4228] text-white py-2 text-center font-bold text-sm tracking-wide flex items-center justify-center gap-2">
@@ -684,12 +699,12 @@ function DashboardPage() {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              <TableRow className="bg-[#C8E6C9] hover:bg-[#C8E6C9]">
+                              <TableRow style={{ background: "#C8E6C9" }} className="hover:brightness-[0.96]">
                                 <TableCell className="text-center font-semibold text-[#0A2616] py-2">Caixa Fechada</TableCell>
                                 <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-[#A5D6A7] border-dashed">{rel.caixa}</TableCell>
                                 <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-[#A5D6A7] border-dashed">{pct(rel.caixa, rel.total).toFixed(1)}%</TableCell>
                               </TableRow>
-                              <TableRow className="bg-white hover:bg-white">
+                              <TableRow style={{ background: "#FFFFFF" }} className="hover:brightness-[0.97]">
                                 <TableCell className="text-center font-semibold text-[#0A2616] py-2">Fração</TableCell>
                                 <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-gray-200 border-dashed">{rel.fracao}</TableCell>
                                 <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-gray-200 border-dashed">{pct(rel.fracao, rel.total).toFixed(1)}%</TableCell>
@@ -706,26 +721,56 @@ function DashboardPage() {
                     </div>
                   )}
                 </div>
-
+                {/* Detalhamento por Pedido — LARGURA TOTAL, acima de Top SKUs */}
+                {kpis.abPedidos.length > 0 && (
+                  <div className="rounded-lg overflow-hidden border border-border bg-card">
+                    <div className="bg-[#0A2616] text-white py-3 px-4 font-bold text-sm tracking-wide flex items-center gap-2">
+                      <Package className="size-4" /> DETALHAMENTO POR PEDIDO — APICE E BEAUTY
+                      <span className="ml-auto text-xs font-normal opacity-70">Caixas fechadas e unidades fracionadas por pedido</span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[#2E593F] hover:bg-[#2E593F]">
+                          <TableHead className="text-white font-bold">Pedido</TableHead>
+                          <TableHead className="text-white font-bold">Cliente</TableHead>
+                          <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Caixas Fechadas</TableHead>
+                          <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Unidades Fracionadas</TableHead>
+                          <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Total Itens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {kpis.abPedidos.map((p, idx) => (
+                          <TableRow key={p.pedido} style={{ background: idx % 2 === 0 ? "#FFFFFF" : "#F7FBF8" }} className="hover:brightness-[0.96]">
+                            <TableCell className="font-mono text-xs text-[#0A2616] font-semibold">{p.pedido}</TableCell>
+                            <TableCell className="text-sm text-[#1B4228]">{p.cliente}</TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-block bg-[#C8E6C9] text-[#0A2616] font-bold text-sm px-3 py-0.5 rounded-full">
+                                {p.caixas > 0 ? p.caixas.toLocaleString("pt-BR") : "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="inline-block bg-[#FFF3E0] text-[#7B4F00] font-bold text-sm px-3 py-0.5 rounded-full">
+                                {p.fracao > 0 ? p.fracao.toLocaleString("pt-BR") : "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center font-semibold text-[#0A2616]">
+                              {p.qtd.toLocaleString("pt-BR")}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                {/* Top 15 SKUs */}
                 <Card className="p-6">
                   <h3 className="font-semibold mb-4">Top 15 SKUs por quantidade de itens</h3>
                   <ResponsiveContainer width="100%" height={420}>
                     <BarChart data={topSkus} layout="vertical" margin={{ left: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                       <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
-                      <YAxis
-                        type="category" dataKey="sku"
-                        stroke="var(--muted-foreground)" fontSize={11}
-                        width={100}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                        }}
-                        formatter={(v: number, _n, p) => [v, (p.payload as { nome: string }).nome]}
-                      />
+                      <YAxis type="category" dataKey="sku" stroke="var(--muted-foreground)" fontSize={11} width={100} />
+                      <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8 }} formatter={(v: number, _n, p) => [v, (p.payload as { nome: string }).nome]} />
                       <Bar dataKey="qt" fill={C.primary} radius={[0, 4, 4, 0]} name="Itens" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -738,3 +783,4 @@ function DashboardPage() {
     </div>
   );
 }
+

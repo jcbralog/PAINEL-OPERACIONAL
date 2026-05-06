@@ -2,14 +2,14 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { loadUpload, type WduRow, type WkuRow } from "@/lib/loadUpload";
+import { loadUpload, type WxdRow, type WkuRow } from "@/lib/loadUpload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -18,7 +18,10 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { BarChart3, Boxes, CheckCheck, History, LogOut, Package, PackageCheck, Truck, Upload } from "lucide-react";
+import {
+  BarChart3, Boxes, CheckCheck, History, Package, PackageCheck,
+  Truck, Upload, Layers, Tag, Calendar, Sparkles,
+} from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -27,50 +30,68 @@ export const Route = createFileRoute("/dashboard")({
 
 type UploadRow = { id: string; uploaded_at: string; reference_date: string | null; wku_count: number };
 
-const COLORS = ["hsl(217 91% 60%)", "hsl(142 71% 45%)", "hsl(38 92% 50%)", "hsl(0 84% 60%)", "hsl(280 83% 58%)"];
+const APICE_BEAUTY = /apice|beauty/i;
 
 function KpiCard({
-  icon: Icon, label, value, sub, progress, accent,
-}: { icon: typeof BarChart3; label: string; value: string; sub?: string; progress?: number; accent?: string }) {
+  icon: Icon, label, value, sub, progress, gold,
+}: {
+  icon: typeof BarChart3; label: string; value: string; sub?: string;
+  progress?: number; gold?: boolean;
+}) {
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-          <div className="text-3xl font-bold mt-1.5">{value}</div>
-          {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+    <Card
+      className="relative overflow-hidden p-5 border-border/60"
+      style={{
+        background: "var(--gradient-luxe)",
+        boxShadow: "var(--shadow-luxe)",
+      }}
+    >
+      <div className="absolute inset-0 opacity-[0.04]" style={{ background: "var(--gradient-primary)" }} />
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">
+            {label}
+          </div>
+          <div className="text-3xl font-bold mt-2 tabular-nums tracking-tight">{value}</div>
+          {sub && <div className="text-xs text-muted-foreground mt-1.5">{sub}</div>}
         </div>
-        <div className={`p-2 rounded-md ${accent ?? "bg-primary/10 text-primary"}`}>
-          <Icon className="size-5" />
+        <div
+          className="p-2.5 rounded-lg shrink-0"
+          style={{
+            background: gold ? "var(--gradient-gold)" : "var(--gradient-primary)",
+            boxShadow: gold ? undefined : "var(--shadow-glow)",
+          }}
+        >
+          <Icon className="size-5 text-primary-foreground" />
         </div>
       </div>
-      {progress !== undefined && <Progress value={progress} className="mt-4 h-1.5" />}
+      {progress !== undefined && (
+        <div className="relative mt-4">
+          <Progress value={progress} className="h-2" />
+          <div className="text-[10px] text-muted-foreground mt-1.5 text-right tabular-nums">
+            {progress.toFixed(1)}%
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
 
 function DashboardPage() {
-  const nav = useNavigate();
   const { id } = Route.useSearch();
-  const { user, loading: authLoading } = useAuth();
+  const nav = useNavigate();
 
   const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [selected, setSelected] = useState<string | null>(id ?? null);
   const [loading, setLoading] = useState(false);
   const [wku, setWku] = useState<WkuRow[]>([]);
-  const [wdu, setWdu] = useState<WduRow[]>([]);
+  const [wxd, setWxd] = useState<WxdRow[]>([]);
 
-  // filtros
   const [search, setSearch] = useState("");
   const [clienteFilter, setClienteFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all"); // sep / cko / exp / pendente
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
-    if (!authLoading && !user) nav({ to: "/auth" });
-  }, [authLoading, user, nav]);
-
-  useEffect(() => {
-    if (!user) return;
     supabase
       .from("uploads")
       .select("id,uploaded_at,reference_date,wku_count")
@@ -80,31 +101,33 @@ function DashboardPage() {
         setUploads(rows);
         if (!selected && rows[0]) setSelected(rows[0].id);
       });
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!selected) return;
     setLoading(true);
     loadUpload(selected)
-      .then(({ wku, wdu }) => { setWku(wku); setWdu(wdu); })
+      .then(({ wku, wxd }) => { setWku(wku); setWxd(wxd); })
       .finally(() => setLoading(false));
   }, [selected]);
 
-  // mapa pedido → sit_fase (último visto)
   const faseMap = useMemo(() => {
     const m = new Map<string, string>();
-    for (const r of wdu) if (r.pedido) m.set(r.pedido, r.sit_fase ?? "");
+    for (const r of wxd) if (r.pedido) m.set(r.pedido, r.sit_fase ?? "");
     return m;
-  }, [wdu]);
+  }, [wxd]);
 
-  const clientes = useMemo(() => Array.from(new Set(wku.map((r) => r.cliente).filter(Boolean) as string[])).sort(), [wku]);
+  const clientes = useMemo(
+    () => Array.from(new Set(wku.map((r) => r.cliente).filter(Boolean) as string[])).sort(),
+    [wku],
+  );
 
-  // aplica filtros (linhas WKU)
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return wku.filter((r) => {
       if (clienteFilter !== "all" && r.cliente !== clienteFilter) return false;
-      if (q && !(`${r.pedido ?? ""} ${r.sku ?? ""} ${r.nome ?? ""}`.toLowerCase().includes(q))) return false;
+      if (q && !`${r.pedido ?? ""} ${r.sku ?? ""} ${r.nome ?? ""}`.toLowerCase().includes(q)) return false;
       if (statusFilter !== "all") {
         const fase = r.pedido ? faseMap.get(r.pedido) : undefined;
         if (statusFilter === "sep" && r.pct_sep !== 100) return false;
@@ -116,26 +139,59 @@ function DashboardPage() {
     });
   }, [wku, search, clienteFilter, statusFilter, faseMap]);
 
-  // KPIs (sobre filtered)
+  // KPIs principais
   const kpis = useMemo(() => {
     const linhas = filtered.length;
     const linhasSep = filtered.filter((r) => r.pct_sep === 100).length;
     const linhasCko = filtered.filter((r) => r.pct_cko === 100).length;
-    const pedidosSet = new Set(filtered.map((r) => r.pedido).filter(Boolean));
-    const pedidosSepSet = new Set(filtered.filter((r) => r.pct_sep === 100).map((r) => r.pedido).filter(Boolean));
-    const pedidosCkoSet = new Set(filtered.filter((r) => r.pct_cko === 100).map((r) => r.pedido).filter(Boolean));
+    const pedidosSet = new Set(filtered.map((r) => r.pedido).filter(Boolean) as string[]);
+    const pedidosSepSet = new Set(
+      filtered.filter((r) => r.pct_sep === 100).map((r) => r.pedido).filter(Boolean) as string[],
+    );
+    const pedidosCkoSet = new Set(
+      filtered.filter((r) => r.pct_cko === 100).map((r) => r.pedido).filter(Boolean) as string[],
+    );
+    const pedidosProduzidos = new Set(
+      filtered.filter((r) => r.dt_conf_sep).map((r) => r.pedido).filter(Boolean) as string[],
+    );
     const pedidos = pedidosSet.size;
     const pedidosSep = pedidosSepSet.size;
     const pedidosCko = pedidosCkoSet.size;
     const skus = new Set(filtered.map((r) => r.sku).filter(Boolean)).size;
-    const caixas = filtered.reduce((a, r) => a + (r.caixas || 0), 0);
-    const fracionado = filtered.reduce((a, r) => a + (r.fracionado || 0), 0);
     const unidades = filtered.reduce((a, r) => a + (r.qt_item || 0), 0);
-    const expedidos = Array.from(pedidosSet).filter((p) => p && faseMap.get(p) === "Emb. Conf.").length;
-    return { linhas, linhasSep, linhasCko, pedidos, pedidosSep, pedidosCko, skus, caixas, fracionado, unidades, expedidos };
+    const expedidos = Array.from(pedidosSet).filter((p) => faseMap.get(p) === "Emb. Conf.").length;
+
+    // Caixas vs Fração — só APICE/BEAUTY
+    const ab = filtered.filter((r) => r.cliente && APICE_BEAUTY.test(r.cliente));
+    const caixasFechadas = ab.reduce((a, r) => a + (r.caixas || 0), 0);
+    const unidFracionadas = ab.reduce((a, r) => a + (r.fracionado || 0), 0);
+
+    // % pedidos com fração x % com só caixa fechada (somente clientes A/B)
+    const pedidosAB = new Map<string, { temFracao: boolean; temCaixa: boolean }>();
+    for (const r of ab) {
+      if (!r.pedido) continue;
+      const cur = pedidosAB.get(r.pedido) ?? { temFracao: false, temCaixa: false };
+      if ((r.fracionado || 0) > 0) cur.temFracao = true;
+      if ((r.caixas || 0) > 0) cur.temCaixa = true;
+      pedidosAB.set(r.pedido, cur);
+    }
+    let pedAB_caixaFechada = 0;
+    let pedAB_fracionado = 0;
+    for (const v of pedidosAB.values()) {
+      if (v.temFracao) pedAB_fracionado++;
+      else if (v.temCaixa) pedAB_caixaFechada++;
+    }
+    const pedAB_total = pedidosAB.size;
+
+    return {
+      linhas, linhasSep, linhasCko,
+      pedidos, pedidosSep, pedidosCko, pedidosProduzidos: pedidosProduzidos.size,
+      skus, unidades, expedidos,
+      caixasFechadas, unidFracionadas,
+      pedAB_caixaFechada, pedAB_fracionado, pedAB_total,
+    };
   }, [filtered, faseMap]);
 
-  // séries
   const porHora = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of filtered) {
@@ -143,44 +199,60 @@ function DashboardPage() {
       const h = new Date(r.dt_conf_sep).toISOString().slice(0, 13) + ":00";
       m.set(h, (m.get(h) ?? 0) + 1);
     }
-    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => ({
-      hora: k.slice(11, 16),
-      separado: v,
-    }));
+    return Array.from(m.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => ({ hora: k.slice(11, 16), separado: v }));
   }, [filtered]);
 
   const topSkus = useMemo(() => {
-    const m = new Map<string, { caixas: number; und: number; nome: string }>();
+    const m = new Map<string, { qt: number; nome: string }>();
     for (const r of filtered) {
       if (!r.sku) continue;
-      const cur = m.get(r.sku) ?? { caixas: 0, und: 0, nome: r.nome ?? "" };
-      cur.caixas += r.caixas || 0;
-      cur.und += r.fracionado || 0;
+      const cur = m.get(r.sku) ?? { qt: 0, nome: r.nome ?? "" };
+      cur.qt += r.qt_item || 0;
       m.set(r.sku, cur);
     }
     return Array.from(m.entries())
-      .map(([sku, v]) => ({ sku, ...v, total: v.caixas * 1000 + v.und }))
-      .sort((a, b) => b.caixas - a.caixas || b.und - a.und)
-      .slice(0, 15)
-      .map((x) => ({ ...x, label: `${x.sku}` }));
+      .map(([sku, v]) => ({ sku, ...v }))
+      .sort((a, b) => b.qt - a.qt)
+      .slice(0, 15);
   }, [filtered]);
 
-  const fasePie = useMemo(() => {
-    const pedidoSet = new Set(filtered.map((r) => r.pedido).filter(Boolean) as string[]);
+  const topClientes = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of pedidoSet) {
-      const f = faseMap.get(p) ?? "Sem WDU";
-      m.set(f, (m.get(f) ?? 0) + 1);
+    for (const r of filtered) {
+      if (!r.cliente || !r.pedido) continue;
+      const k = r.cliente;
+      const set = (m.get(k) as unknown as Set<string>) ?? new Set<string>();
+      set.add(r.pedido);
+      m.set(k, set as unknown as number);
     }
-    return Array.from(m.entries()).map(([fase, qtd]) => ({ fase, qtd }));
-  }, [filtered, faseMap]);
+    return Array.from(m.entries())
+      .map(([cliente, set]) => ({ cliente, pedidos: (set as unknown as Set<string>).size }))
+      .sort((a, b) => b.pedidos - a.pedidos)
+      .slice(0, 8);
+  }, [filtered]);
 
-  // Tabela: agrupar por pedido
+  const fracVsCaixa = useMemo(
+    () => [
+      { name: "Caixa fechada", value: kpis.pedAB_caixaFechada },
+      { name: "Fracionado", value: kpis.pedAB_fracionado },
+    ],
+    [kpis],
+  );
+
   const pedidosTable = useMemo(() => {
-    const map = new Map<string, { pedido: string; cliente: string; linhas: number; sep: number; cko: number; caixas: number; und: number; fase: string }>();
+    const map = new Map<
+      string,
+      { pedido: string; cliente: string; linhas: number; sep: number; cko: number; caixas: number; und: number; fase: string }
+    >();
     for (const r of filtered) {
       const p = r.pedido ?? "—";
-      const cur = map.get(p) ?? { pedido: p, cliente: r.cliente ?? "", linhas: 0, sep: 0, cko: 0, caixas: 0, und: 0, fase: faseMap.get(p) ?? "—" };
+      const cur = map.get(p) ?? {
+        pedido: p, cliente: r.cliente ?? "",
+        linhas: 0, sep: 0, cko: 0, caixas: 0, und: 0,
+        fase: faseMap.get(p) ?? "—",
+      };
       cur.linhas++;
       if (r.pct_sep === 100) cur.sep++;
       if (r.pct_cko === 100) cur.cko++;
@@ -193,46 +265,82 @@ function DashboardPage() {
 
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
+  const C = {
+    primary: "oklch(0.65 0.15 155)",
+    glow: "oklch(0.78 0.18 152)",
+    gold: "oklch(0.82 0.16 88)",
+    red: "oklch(0.55 0.18 25)",
+    blue: "oklch(0.55 0.10 200)",
+  };
+  const PIE = [C.primary, C.gold];
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
-        <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center gap-4">
-          <div className="flex items-center gap-2 font-semibold">
-            <BarChart3 className="size-5 text-primary" />
-            Painel Operacional
+      <header
+        className="border-b border-border/60 sticky top-0 z-10 backdrop-blur"
+        style={{ background: "color-mix(in oklab, var(--background) 90%, transparent)" }}
+      >
+        <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
+          <div className="flex items-center gap-2.5 font-bold tracking-tight">
+            <div
+              className="size-8 rounded-lg flex items-center justify-center"
+              style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
+            >
+              <Sparkles className="size-4 text-primary-foreground" />
+            </div>
+            <div>
+              <div className="text-sm leading-tight">BRALOG</div>
+              <div className="text-[10px] text-muted-foreground tracking-widest uppercase">
+                Painel Operacional
+              </div>
+            </div>
           </div>
           <div className="flex-1" />
-          <Select value={selected ?? ""} onValueChange={(v) => setSelected(v)}>
-            <SelectTrigger className="w-[280px]"><SelectValue placeholder="Selecionar upload" /></SelectTrigger>
-            <SelectContent>
-              {uploads.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {(u.reference_date ?? new Date(u.uploaded_at).toLocaleDateString("pt-BR"))} · {u.wku_count} linhas
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" asChild><Link to="/historico"><History className="size-4" />Histórico</Link></Button>
-          <Button asChild><Link to="/upload"><Upload className="size-4" />Novo upload</Link></Button>
-          <Button variant="ghost" size="icon" onClick={async () => { await supabase.auth.signOut(); nav({ to: "/auth" }); }}>
-            <LogOut className="size-4" />
+          {uploads.length > 0 && (
+            <Select value={selected ?? ""} onValueChange={(v) => setSelected(v)}>
+              <SelectTrigger className="w-[300px]">
+                <SelectValue placeholder="Selecionar upload" />
+              </SelectTrigger>
+              <SelectContent>
+                {uploads.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.reference_date ?? new Date(u.uploaded_at).toLocaleDateString("pt-BR")} ·{" "}
+                    {u.wku_count} linhas
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button variant="outline" asChild>
+            <Link to="/historico"><History className="size-4" />Histórico</Link>
+          </Button>
+          <Button onClick={() => nav({ to: "/upload" })}>
+            <Upload className="size-4" />Novo upload
           </Button>
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
+      <main className="max-w-[1500px] mx-auto px-6 py-6 space-y-6">
         {!selected && uploads.length === 0 && (
-          <Card className="p-12 text-center">
-            <h2 className="text-xl font-semibold">Nenhum upload ainda</h2>
-            <p className="text-muted-foreground mt-2">Envie suas três planilhas para começar.</p>
-            <Button className="mt-6" asChild><Link to="/upload">Fazer primeiro upload</Link></Button>
+          <Card className="p-16 text-center" style={{ background: "var(--gradient-luxe)" }}>
+            <div
+              className="size-16 mx-auto rounded-full flex items-center justify-center mb-4"
+              style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
+            >
+              <Upload className="size-7 text-primary-foreground" />
+            </div>
+            <h2 className="text-2xl font-bold">Nenhum upload ainda</h2>
+            <p className="text-muted-foreground mt-2">
+              Envie suas planilhas WKU, WMG (Apice/Beauty) e WXD para começar.
+            </p>
+            <Button className="mt-6" size="lg" asChild>
+              <Link to="/upload">Fazer primeiro upload</Link>
+            </Button>
           </Card>
         )}
 
         {selected && (
           <>
-            {/* Filtros */}
             <Card className="p-4 flex flex-wrap gap-3 items-center">
               <Input
                 placeholder="Buscar pedido, SKU ou nome..."
@@ -241,14 +349,18 @@ function DashboardPage() {
                 className="max-w-xs"
               />
               <Select value={clienteFilter} onValueChange={setClienteFilter}>
-                <SelectTrigger className="w-[220px]"><SelectValue placeholder="Cliente" /></SelectTrigger>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder="Cliente" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os clientes</SelectItem>
                   {clientes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os status</SelectItem>
                   <SelectItem value="sep">Separados (100%)</SelectItem>
@@ -265,52 +377,168 @@ function DashboardPage() {
 
             {loading ? (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
               </div>
             ) : (
               <>
-                {/* KPIs */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <KpiCard icon={Package} label="Pedidos separados" value={`${kpis.pedidosSep}/${kpis.pedidos}`}
-                    sub={`${pct(kpis.pedidosSep, kpis.pedidos)}% do total`} progress={pct(kpis.pedidosSep, kpis.pedidos)} />
-                  <KpiCard icon={CheckCheck} label="Em checkout 100%" value={kpis.pedidosCko.toString()}
-                    sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`} progress={pct(kpis.pedidosCko, kpis.pedidos)}
-                    accent="bg-emerald-500/10 text-emerald-500" />
-                  <KpiCard icon={Truck} label="Expedidos" value={kpis.expedidos.toString()}
-                    sub="Sit. Fase = Emb. Conf." progress={pct(kpis.expedidos, kpis.pedidos)}
-                    accent="bg-amber-500/10 text-amber-500" />
-                  <KpiCard icon={Boxes} label="SKUs distintos" value={kpis.skus.toString()}
-                    sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`} />
-                  <KpiCard icon={PackageCheck} label="Caixas movimentadas" value={kpis.caixas.toLocaleString("pt-BR")}
-                    sub="caixas fechadas (fator>1)" />
-                  <KpiCard icon={Package} label="Unidades fracionadas" value={kpis.fracionado.toLocaleString("pt-BR")}
-                    sub="quebra de caixa + soltos" />
-                  <KpiCard icon={BarChart3} label="Total de unidades" value={kpis.unidades.toLocaleString("pt-BR")}
-                    sub="Σ Qt. Ítem" />
-                  <KpiCard icon={CheckCheck} label="% Separação" value={`${pct(kpis.linhasSep, kpis.linhas)}%`}
-                    sub={`${kpis.linhasSep.toLocaleString("pt-BR")} de ${kpis.linhas.toLocaleString("pt-BR")} linhas`}
-                    progress={pct(kpis.linhasSep, kpis.linhas)} />
+                {/* Bloco PEDIDOS */}
+                <div>
+                  <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+                    <Package className="size-3.5" /> Pedidos
+                  </h2>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <KpiCard
+                      icon={Calendar} label="Produzidos no dia" value={kpis.pedidosProduzidos.toLocaleString("pt-BR")}
+                      sub="Têm Dt. Conf. Sep."
+                    />
+                    <KpiCard
+                      icon={CheckCheck} label="Separados (% Sep = 100)"
+                      value={kpis.pedidosSep.toLocaleString("pt-BR")}
+                      sub={`de ${kpis.pedidos} total`}
+                      progress={pct(kpis.pedidosSep, kpis.pedidos)}
+                    />
+                    <KpiCard
+                      icon={PackageCheck} label="Checkout (% Cko = 100)"
+                      value={kpis.pedidosCko.toLocaleString("pt-BR")}
+                      sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`}
+                      progress={pct(kpis.pedidosCko, kpis.pedidos)}
+                    />
+                    <KpiCard
+                      icon={Truck} label="Embarcados (Emb. Conf.)"
+                      value={kpis.expedidos.toLocaleString("pt-BR")}
+                      sub="Sit. Fase = Emb. Conf."
+                      progress={pct(kpis.expedidos, kpis.pedidos)}
+                      gold
+                    />
+                  </div>
                 </div>
+
+                {/* Bloco ITENS */}
+                <div>
+                  <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+                    <Layers className="size-3.5" /> Itens
+                  </h2>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <KpiCard
+                      icon={Tag} label="Total de itens (Qt. Ítem)"
+                      value={kpis.unidades.toLocaleString("pt-BR")}
+                      sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`}
+                    />
+                    <KpiCard
+                      icon={Boxes} label="SKUs distintos (Cód. Merc.)"
+                      value={kpis.skus.toLocaleString("pt-BR")}
+                      sub="produtos únicos no dia"
+                    />
+                    <KpiCard
+                      icon={PackageCheck} label="Caixas fechadas — APICE/BEAUTY"
+                      value={kpis.caixasFechadas.toLocaleString("pt-BR")}
+                      sub="Qt.Ítem ÷ Fator (inteiro)"
+                      gold
+                    />
+                    <KpiCard
+                      icon={Package} label="Unidades fracionadas — APICE/BEAUTY"
+                      value={kpis.unidFracionadas.toLocaleString("pt-BR")}
+                      sub="resto da divisão (quebra)"
+                      gold
+                    />
+                  </div>
+                </div>
+
+                {/* Caixas vs Fração: % de pedidos */}
+                {kpis.pedAB_total > 0 && (
+                  <Card className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-semibold">Caixas vs Fração — APICE / BEAUTY</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          % de pedidos com somente caixa fechada × pedidos com fração ({kpis.pedAB_total} pedidos A/B)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid lg:grid-cols-2 gap-6 items-center">
+                      <div className="space-y-4">
+                        {[
+                          {
+                            label: "Caixas fechadas (sem fração)",
+                            v: kpis.pedAB_caixaFechada,
+                            color: C.primary,
+                          },
+                          {
+                            label: "Pedidos com fração",
+                            v: kpis.pedAB_fracionado,
+                            color: C.gold,
+                          },
+                        ].map((s) => {
+                          const p = pct(s.v, kpis.pedAB_total);
+                          return (
+                            <div key={s.label}>
+                              <div className="flex items-center justify-between text-sm mb-1.5">
+                                <span className="font-medium">{s.label}</span>
+                                <span className="text-muted-foreground tabular-nums">
+                                  {s.v} ({p}%)
+                                </span>
+                              </div>
+                              <div className="h-3 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className="h-full transition-all rounded-full"
+                                  style={{ width: `${p}%`, background: s.color }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <PieChart>
+                          <Pie
+                            data={fracVsCaixa}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%" cy="50%"
+                            innerRadius={55} outerRadius={90}
+                            paddingAngle={3}
+                          >
+                            {fracVsCaixa.map((_, i) => <Cell key={i} fill={PIE[i]} />)}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              background: "var(--card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 8,
+                            }}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                )}
 
                 {/* Funil */}
                 <Card className="p-6">
                   <h3 className="font-semibold mb-4">Funil da operação (pedidos)</h3>
                   <div className="space-y-3">
                     {[
-                      { label: "Pedidos totais", v: kpis.pedidos, color: "bg-muted" },
-                      { label: "Separados (100%)", v: kpis.pedidosSep, color: "bg-primary" },
-                      { label: "Em checkout (100%)", v: kpis.pedidosCko, color: "bg-emerald-500" },
-                      { label: "Expedidos (Emb. Conf.)", v: kpis.expedidos, color: "bg-amber-500" },
+                      { label: "Total de pedidos", v: kpis.pedidos, color: "color-mix(in oklab, var(--muted-foreground) 50%, transparent)" },
+                      { label: "Produzidos (têm Dt. Sep.)", v: kpis.pedidosProduzidos, color: C.blue },
+                      { label: "Separados 100%", v: kpis.pedidosSep, color: C.primary },
+                      { label: "Checkout 100%", v: kpis.pedidosCko, color: C.glow },
+                      { label: "Embarcados (Emb. Conf.)", v: kpis.expedidos, color: C.gold },
                     ].map((s) => {
                       const p = pct(s.v, kpis.pedidos);
                       return (
                         <div key={s.label}>
                           <div className="flex items-center justify-between text-sm mb-1.5">
                             <span>{s.label}</span>
-                            <span className="text-muted-foreground tabular-nums">{s.v.toLocaleString("pt-BR")} ({p}%)</span>
+                            <span className="text-muted-foreground tabular-nums">
+                              {s.v.toLocaleString("pt-BR")} ({p}%)
+                            </span>
                           </div>
-                          <div className="h-3 rounded bg-muted overflow-hidden">
-                            <div className={`h-full ${s.color} transition-all`} style={{ width: `${p}%` }} />
+                          <div className="h-3 rounded-full bg-muted/60 overflow-hidden">
+                            <div
+                              className="h-full transition-all rounded-full"
+                              style={{ width: `${p}%`, background: s.color }}
+                            />
                           </div>
                         </div>
                       );
@@ -324,48 +552,83 @@ function DashboardPage() {
                     <h3 className="font-semibold mb-4">Separações por hora</h3>
                     <ResponsiveContainer width="100%" height={260}>
                       <LineChart data={porHora}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="hora" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                        <Line type="monotone" dataKey="separado" stroke={COLORS[0]} strokeWidth={2} dot={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                        <XAxis dataKey="hora" stroke="var(--muted-foreground)" fontSize={12} />
+                        <YAxis stroke="var(--muted-foreground)" fontSize={12} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                          }}
+                        />
+                        <Line
+                          type="monotone" dataKey="separado"
+                          stroke={C.primary} strokeWidth={2.5}
+                          dot={{ fill: C.primary, r: 3 }}
+                        />
                       </LineChart>
                     </ResponsiveContainer>
                   </Card>
 
                   <Card className="p-6">
-                    <h3 className="font-semibold mb-4">Distribuição por Sit. Fase (pedidos)</h3>
+                    <h3 className="font-semibold mb-4">Top clientes (pedidos)</h3>
                     <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie data={fasePie} dataKey="qtd" nameKey="fase" cx="50%" cy="50%" outerRadius={90} label>
-                          {fasePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Legend />
-                        <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                      </PieChart>
+                      <BarChart data={topClientes} layout="vertical" margin={{ left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                        <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
+                        <YAxis
+                          type="category" dataKey="cliente"
+                          stroke="var(--muted-foreground)" fontSize={11}
+                          width={140}
+                          tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 18) + "…" : v)}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                          }}
+                        />
+                        <Bar dataKey="pedidos" fill={C.primary} radius={[0, 4, 4, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </Card>
                 </div>
 
                 {/* Top SKUs */}
                 <Card className="p-6">
-                  <h3 className="font-semibold mb-4">Top 15 SKUs por caixas movimentadas</h3>
-                  <ResponsiveContainer width="100%" height={380}>
-                    <BarChart data={topSkus} layout="vertical" margin={{ left: 60 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                      <YAxis type="category" dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} width={90} />
-                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                      <Legend />
-                      <Bar dataKey="caixas" stackId="a" fill={COLORS[0]} name="Caixas" />
-                      <Bar dataKey="und" stackId="a" fill={COLORS[2]} name="Fracionado" />
+                  <h3 className="font-semibold mb-4">Top 15 SKUs por quantidade de itens</h3>
+                  <ResponsiveContainer width="100%" height={420}>
+                    <BarChart data={topSkus} layout="vertical" margin={{ left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
+                      <YAxis
+                        type="category" dataKey="sku"
+                        stroke="var(--muted-foreground)" fontSize={11}
+                        width={100}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                        }}
+                        formatter={(v: number, _n, p) => [v, (p.payload as { nome: string }).nome]}
+                      />
+                      <Bar dataKey="qt" fill={C.primary} radius={[0, 4, 4, 0]} name="Itens" />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
 
-                {/* Tabela de pedidos */}
-                <Card className="p-6">
-                  <h3 className="font-semibold mb-4">Pedidos (top 200 por nº de linhas)</h3>
+                {/* Tabela */}
+                <Card className="p-0 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h3 className="font-semibold">Pedidos detalhados</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Top 200 ordenados por nº de linhas
+                    </p>
+                  </div>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -373,25 +636,34 @@ function DashboardPage() {
                           <TableHead>Pedido</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead className="text-right">Linhas</TableHead>
-                          <TableHead className="text-right">Sep</TableHead>
-                          <TableHead className="text-right">Cko</TableHead>
+                          <TableHead className="text-right">Sep 100%</TableHead>
+                          <TableHead className="text-right">Cko 100%</TableHead>
                           <TableHead className="text-right">Caixas</TableHead>
-                          <TableHead className="text-right">Fracionado</TableHead>
-                          <TableHead>Fase</TableHead>
+                          <TableHead className="text-right">Frac.</TableHead>
+                          <TableHead>Sit. Fase</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {pedidosTable.map((p) => (
                           <TableRow key={p.pedido}>
-                            <TableCell className="font-medium">{p.pedido}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[260px] truncate">{p.cliente}</TableCell>
+                            <TableCell className="font-mono text-xs">{p.pedido}</TableCell>
+                            <TableCell className="text-sm max-w-[260px] truncate">{p.cliente}</TableCell>
                             <TableCell className="text-right tabular-nums">{p.linhas}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.sep}/{p.linhas}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.cko}/{p.linhas}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.caixas}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.und}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.sep}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.cko}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.caixas || "—"}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.und || "—"}</TableCell>
                             <TableCell>
-                              <Badge variant={p.fase === "Emb. Conf." ? "default" : "secondary"}>{p.fase}</Badge>
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={
+                                  p.fase === "Emb. Conf."
+                                    ? { background: "color-mix(in oklab, var(--primary) 20%, transparent)", color: "var(--primary)" }
+                                    : { background: "var(--muted)", color: "var(--muted-foreground)" }
+                                }
+                              >
+                                {p.fase}
+                              </span>
                             </TableCell>
                           </TableRow>
                         ))}

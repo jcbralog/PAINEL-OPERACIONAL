@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -243,13 +243,14 @@ function DashboardPage() {
     });
 
     // Detalhamento por PEDIDO (Apice/Beauty) — caixas e frações por pedido
-    const abPedidosMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number }>();
+    const abPedidosMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number; fatores: Set<number> }>();
     for (const r of ab) {
       if (!r.pedido) continue;
-      const cur = abPedidosMap.get(r.pedido) ?? { cliente: r.cliente ?? "", caixas: 0, fracao: 0, qtd: 0 };
+      const cur = abPedidosMap.get(r.pedido) ?? { cliente: r.cliente ?? "", caixas: 0, fracao: 0, qtd: 0, fatores: new Set<number>() };
       cur.caixas += r.caixas || 0;
       cur.fracao += r.fracionado || 0;
       cur.qtd += r.qt_item || 0;  // total real de itens (unidades) do pedido
+      if (r.fator_caixa > 1) cur.fatores.add(r.fator_caixa);
       abPedidosMap.set(r.pedido, cur);
     }
     const abPedidos = Array.from(abPedidosMap.entries())
@@ -735,6 +736,7 @@ function DashboardPage() {
                           <TableHead className="text-white font-bold">Cliente</TableHead>
                           <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Caixas Fechadas</TableHead>
                           <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Unidades Fracionadas</TableHead>
+                          <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Fator</TableHead>
                           <TableHead className="text-white font-bold text-center border-l border-[#1B4228]/30">Total Itens</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -752,6 +754,9 @@ function DashboardPage() {
                               <span className="inline-block bg-[#FFF3E0] text-[#7B4F00] font-bold text-sm px-3 py-0.5 rounded-full">
                                 {p.fracao > 0 ? p.fracao.toLocaleString("pt-BR") : "—"}
                               </span>
+                            </TableCell>
+                            <TableCell className="text-center text-sm font-medium text-[#1B4228]">
+                              {p.fatores.size > 0 ? Array.from(p.fatores).join(", ") : "1"}
                             </TableCell>
                             <TableCell className="text-center font-semibold text-[#0A2616]">
                               {p.qtd.toLocaleString("pt-BR")}

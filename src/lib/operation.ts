@@ -144,17 +144,23 @@ export function buildFatorMap(wmgs: WmgRaw[][]): Map<string, number> {
       
       // Só consideramos esse fator como "caixa fechada" (>1)
       // se a embalagem estiver validada nas colunas SEP, CKO e CV com "X"
-      const hasSep = r.sep?.toLowerCase() === "x";
-      const hasCko = r.cko?.toLowerCase() === "x";
-      const hasCv = r.cv?.toLowerCase() === "x";
+      const hasSep = r.sep?.trim().toLowerCase() === "x";
+      const hasCko = r.cko?.trim().toLowerCase() === "x";
+      const hasCv = r.cv?.trim().toLowerCase() === "x";
       
       let validFator = 1;
       if (f > 1 && hasSep && hasCko && hasCv) {
         validFator = f;
       }
 
-      const cur = m.get(r.sku) ?? 1;
-      if (validFator > cur) m.set(r.sku, validFator);
+      if (validFator > 1) {
+        const cur = m.get(r.sku);
+        if (!cur || cur === 1) {
+          m.set(r.sku, validFator);
+        } else {
+          m.set(r.sku, Math.min(cur, validFator));
+        }
+      }
     }
   }
   return m;

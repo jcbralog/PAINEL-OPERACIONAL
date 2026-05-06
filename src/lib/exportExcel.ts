@@ -358,19 +358,20 @@ export async function exportDashboardExcel(data: {
   // ABA 2 ─ DETALHAMENTO ÁPICE · BEAUTY  (com qtd real)
   // ═══════════════════════════════════════════════════════════════════════════
   const ws2 = wb.addWorksheet("Detalhamento Ápice·Beauty", { views: [{ showGridLines: false }] });
-  pageHeader(ws2, "Detalhamento por Pedido — Ápice e Beauty", "Caixas Fechadas · Frações · Total Real de Itens", 5);
+  pageHeader(ws2, "Detalhamento por Pedido — Ápice e Beauty", "Caixas Fechadas · Frações · Fator · Total Real de Itens", 6);
 
-  tableHeader(ws2, 7, ["Pedido", "Cliente", "Caixas Fechadas", "Unidades Fracionadas", "Total de Itens"], G.forest);
-  ws2.autoFilter = "A7:E7";
+  tableHeader(ws2, 7, ["Pedido", "Cliente", "Caixas Fechadas", "Unidades Fracionadas", "Fator", "Total de Itens"], G.forest);
+  ws2.autoFilter = "A7:F7";
 
   const APICE_BEAUTY = /apice|ápice|beauty/i;
-  const abMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number }>();
+  const abMap = new Map<string, { cliente: string; caixas: number; fracao: number; qtd: number; fatores: Set<number> }>();
   for (const r2 of data.wku) {
     if (!r2.cliente || !APICE_BEAUTY.test(r2.cliente) || !r2.pedido) continue;
-    const cur = abMap.get(r2.pedido) ?? { cliente: r2.cliente, caixas: 0, fracao: 0, qtd: 0 };
+    const cur = abMap.get(r2.pedido) ?? { cliente: r2.cliente, caixas: 0, fracao: 0, qtd: 0, fatores: new Set<number>() };
     cur.caixas += r2.caixas || 0;
     cur.fracao += r2.fracionado || 0;
     cur.qtd   += r2.qt_item || 0;
+    if (r2.fator_caixa > 1) cur.fatores.add(r2.fator_caixa);
     abMap.set(r2.pedido, cur);
   }
   const abList = Array.from(abMap.entries())
@@ -378,19 +379,21 @@ export async function exportDashboardExcel(data: {
     .sort((a, b) => a.cliente.localeCompare(b.cliente) || a.pedido.localeCompare(b.pedido));
 
   abList.forEach((p, idx) => {
-    addDataRow(ws2, [p.pedido, p.cliente, p.caixas, p.fracao, p.qtd], idx, {
+    const fatorStr = p.fatores.size > 0 ? Array.from(p.fatores).join(", ") : "1";
+    addDataRow(ws2, [p.pedido, p.cliente, p.caixas, p.fracao, fatorStr, p.qtd], idx, {
       3: { bg: p.caixas > 0 ? G.boxBg : undefined, fg: p.caixas > 0 ? G.boxText : undefined, hAlign: "center" },
       4: { bg: p.fracao > 0 ? G.fracBg : undefined, fg: p.fracao > 0 ? G.fracText : undefined, hAlign: "center" },
-      5: { bg: G.boxBg, fg: G.deep, bold: true, hAlign: "center" },
+      5: { hAlign: "center" },
+      6: { bg: G.boxBg, fg: G.deep, bold: true, hAlign: "center" },
     });
   });
 
   if (abList.length === 0) {
-    const emptyRow = ws2.addRow(["Nenhum pedido encontrado.", "", "", "", ""]);
+    const emptyRow = ws2.addRow(["Nenhum pedido encontrado.", "", "", "", "", ""]);
     emptyRow.getCell(1).font = font(G.muted, 10, false, true);
   }
 
-  [20, 48, 18, 20, 20].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
+  [20, 48, 18, 20, 15, 20].forEach((w, i) => { ws2.getColumn(i + 1).width = w; });
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ABA 3 ─ CONSOLIDAÇÃO POR SKU

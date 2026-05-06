@@ -106,6 +106,12 @@ export function parseWmg(buf: ArrayBuffer): WmgRaw[] {
       break;
     }
   }
+  const headerRow = raw[headerIdx] || [];
+  const hasCvColumn = headerRow.some(c => {
+    const s = String(c ?? "").toLowerCase().trim();
+    return s === "cv" || s === "cv.";
+  });
+
   const rows = toObjects(raw, headerIdx);
   return rows
     .map((r) => ({
@@ -114,7 +120,7 @@ export function parseWmg(buf: ArrayBuffer): WmgRaw[] {
       nome: norm(pick(r, ["Nome Mercadoria", "Mercadoria"])),
       sep: norm(pick(r, ["Sep.", "Sep", "SEP"])),
       cko: norm(pick(r, ["Cko.", "Cko", "CKO"])),
-      cv: norm(pick(r, ["Cv.", "Cv", "CV"])),
+      cv: hasCvColumn ? norm(pick(r, ["Cv.", "Cv", "CV"])) : "x",
     }))
     .filter((r) => r.sku);
 }

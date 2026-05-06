@@ -20,64 +20,32 @@ export type Database = {
           notes: string | null
           reference_date: string | null
           uploaded_at: string
-          user_id: string
-          wdu_count: number
+          user_id: string | null
           wku_count: number
           wmg_count: number
+          wxd_count: number
         }
         Insert: {
           id?: string
           notes?: string | null
           reference_date?: string | null
           uploaded_at?: string
-          user_id: string
-          wdu_count?: number
+          user_id?: string | null
           wku_count?: number
           wmg_count?: number
+          wxd_count?: number
         }
         Update: {
           id?: string
           notes?: string | null
           reference_date?: string | null
           uploaded_at?: string
-          user_id?: string
-          wdu_count?: number
+          user_id?: string | null
           wku_count?: number
           wmg_count?: number
+          wxd_count?: number
         }
         Relationships: []
-      }
-      wdu_rows: {
-        Row: {
-          cliente: string | null
-          id: number
-          pedido: string | null
-          sit_fase: string | null
-          upload_id: string
-        }
-        Insert: {
-          cliente?: string | null
-          id?: number
-          pedido?: string | null
-          sit_fase?: string | null
-          upload_id: string
-        }
-        Update: {
-          cliente?: string | null
-          id?: number
-          pedido?: string | null
-          sit_fase?: string | null
-          upload_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "wdu_rows_upload_id_fkey"
-            columns: ["upload_id"]
-            isOneToOne: false
-            referencedRelation: "uploads"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       wku_rows: {
         Row: {
@@ -160,6 +128,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "wmg_rows_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wxd_rows: {
+        Row: {
+          cliente: string | null
+          dt_embarque: string | null
+          id: number
+          pedido: string | null
+          sit_fase: string | null
+          upload_id: string
+        }
+        Insert: {
+          cliente?: string | null
+          dt_embarque?: string | null
+          id?: number
+          pedido?: string | null
+          sit_fase?: string | null
+          upload_id: string
+        }
+        Update: {
+          cliente?: string | null
+          dt_embarque?: string | null
+          id?: number
+          pedido?: string | null
+          sit_fase?: string | null
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wdu_rows_upload_id_fkey"
             columns: ["upload_id"]
             isOneToOne: false
             referencedRelation: "uploads"

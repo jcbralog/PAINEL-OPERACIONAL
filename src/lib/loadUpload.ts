@@ -13,7 +13,12 @@ export type WkuRow = {
   caixas: number;
   fracionado: number;
 };
-export type WduRow = { pedido: string | null; sit_fase: string | null; cliente: string | null };
+export type WxdRow = {
+  pedido: string | null;
+  sit_fase: string | null;
+  cliente: string | null;
+  dt_embarque: string | null;
+};
 
 const PAGE = 1000;
 
@@ -46,16 +51,25 @@ async function fetchWku(uploadId: string): Promise<WkuRow[]> {
   return out;
 }
 
-async function fetchWdu(uploadId: string): Promise<WduRow[]> {
-  const out: WduRow[] = [];
+async function fetchWxd(uploadId: string): Promise<WxdRow[]> {
+  const out: WxdRow[] = [];
   let from = 0;
   while (true) {
     const { data, error } = await supabase
-      .from("wdu_rows").select("pedido,sit_fase,cliente").eq("upload_id", uploadId)
+      .from("wxd_rows")
+      .select("pedido,sit_fase,cliente,dt_embarque")
+      .eq("upload_id", uploadId)
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
-    for (const r of data) out.push({ pedido: r.pedido, sit_fase: r.sit_fase, cliente: r.cliente });
+    for (const r of data) {
+      out.push({
+        pedido: r.pedido,
+        sit_fase: r.sit_fase,
+        cliente: r.cliente,
+        dt_embarque: (r as { dt_embarque?: string | null }).dt_embarque ?? null,
+      });
+    }
     if (data.length < PAGE) break;
     from += PAGE;
   }
@@ -63,6 +77,6 @@ async function fetchWdu(uploadId: string): Promise<WduRow[]> {
 }
 
 export async function loadUpload(uploadId: string) {
-  const [wku, wdu] = await Promise.all([fetchWku(uploadId), fetchWdu(uploadId)]);
-  return { wku, wdu };
+  const [wku, wxd] = await Promise.all([fetchWku(uploadId), fetchWxd(uploadId)]);
+  return { wku, wxd };
 }

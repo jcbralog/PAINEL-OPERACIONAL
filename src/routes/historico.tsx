@@ -1,7 +1,6 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,25 +10,32 @@ import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/historico")({ component: HistoricoPage });
 
-type Row = { id: string; uploaded_at: string; reference_date: string | null; wku_count: number; wmg_count: number; wdu_count: number };
+type Row = {
+  id: string;
+  uploaded_at: string;
+  reference_date: string | null;
+  wku_count: number;
+  wmg_count: number;
+  wxd_count: number;
+};
 
 function HistoricoPage() {
-  const nav = useNavigate();
-  const { user, loading: authLoading } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
 
-  useEffect(() => { if (!authLoading && !user) nav({ to: "/auth" }); }, [authLoading, user, nav]);
-
   const load = () => {
-    supabase.from("uploads").select("*").order("uploaded_at", { ascending: false })
+    supabase
+      .from("uploads")
+      .select("id,uploaded_at,reference_date,wku_count,wmg_count,wxd_count")
+      .order("uploaded_at", { ascending: false })
       .then(({ data }) => setRows((data ?? []) as Row[]));
   };
-  useEffect(() => { if (user) load(); }, [user]);
+  useEffect(() => { load(); }, []);
 
   const remove = async (id: string) => {
     if (!confirm("Excluir este upload e todos os dados?")) return;
     const { error } = await supabase.from("uploads").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Removido"); load(); }
+    if (error) toast.error(error.message);
+    else { toast.success("Removido"); load(); }
   };
 
   return (
@@ -51,7 +57,7 @@ function HistoricoPage() {
                 <TableHead>Enviado em</TableHead>
                 <TableHead className="text-right">WKU</TableHead>
                 <TableHead className="text-right">WMG</TableHead>
-                <TableHead className="text-right">WDU</TableHead>
+                <TableHead className="text-right">WXD</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -62,7 +68,7 @@ function HistoricoPage() {
                   <TableCell>{new Date(r.uploaded_at).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.wku_count}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.wmg_count}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.wdu_count}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.wxd_count}</TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button size="sm" variant="outline" asChild>
                       <Link to="/dashboard" search={{ id: r.id }}>Abrir</Link>
@@ -74,7 +80,11 @@ function HistoricoPage() {
                 </TableRow>
               ))}
               {rows.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">Sem uploads ainda.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                    Sem uploads ainda.
+                  </TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

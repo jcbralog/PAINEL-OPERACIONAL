@@ -15,13 +15,17 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
+  Tabs, TabsContent, TabsList, TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
   BarChart3, Boxes, CheckCheck, History, Package, PackageCheck,
-  Truck, Upload, Layers, Tag, Calendar, Sparkles,
+  Truck, Upload, Layers, Tag, Calendar, Sparkles, ClipboardList, Download,
 } from "lucide-react";
+import { exportDashboardExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -30,7 +34,7 @@ export const Route = createFileRoute("/dashboard")({
 
 type UploadRow = { id: string; uploaded_at: string; reference_date: string | null; wku_count: number };
 
-const APICE_BEAUTY = /apice|beauty/i;
+const APICE_BEAUTY = /apice|ápice|beauty/i;
 
 function KpiCard({
   icon: Icon, label, value, sub, progress, gold,
@@ -94,12 +98,20 @@ function DashboardPage() {
   useEffect(() => {
     supabase
       .from("uploads")
-      .select("id,uploaded_at,reference_date,wku_count")
-      .order("uploaded_at", { ascending: false })
+      .select("id,created_at,reference_date,wku_count")
+      .order("created_at", { ascending: false })
+      .limit(30)
       .then(({ data }) => {
-        const rows = (data ?? []) as UploadRow[];
-        setUploads(rows);
-        if (!selected && rows[0]) setSelected(rows[0].id);
+        if (data) {
+          const rows = data.map(u => ({
+            id: u.id,
+            uploaded_at: u.created_at || "",
+            reference_date: u.reference_date,
+            wku_count: u.wku_count
+          }));
+          setUploads(rows);
+          if (!selected && rows[0]) setSelected(rows[0].id);
+        }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -139,6 +151,15 @@ function DashboardPage() {
     });
   }, [wku, search, clienteFilter, statusFilter, faseMap]);
 
+  const filteredWxd = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return wxd.filter((r) => {
+      if (clienteFilter !== "all" && r.cliente !== clienteFilter) return false;
+      if (q && !`${r.pedido ?? ""} ${r.sit_fase ?? ""}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [wxd, search, clienteFilter]);
+
   // KPIs principais
   const kpis = useMemo(() => {
     const linhas = filtered.length;
@@ -166,29 +187,39 @@ function DashboardPage() {
     const caixasFechadas = ab.reduce((a, r) => a + (r.caixas || 0), 0);
     const unidFracionadas = ab.reduce((a, r) => a + (r.fracionado || 0), 0);
 
-    // % pedidos com fração x % com só caixa fechada (somente clientes A/B)
-    const pedidosAB = new Map<string, { temFracao: boolean; temCaixa: boolean }>();
+    // % pedidos com fração x % com só caixa fechada (separado por cliente)
+    const abOrders = new Map<string, Map<string, { temFracao: boolean; temCaixa: boolean }>>();
+    
     for (const r of ab) {
-      if (!r.pedido) continue;
-      const cur = pedidosAB.get(r.pedido) ?? { temFracao: false, temCaixa: false };
+      if (!r.pedido || !r.cliente) continue;
+      const c = r.cliente.toUpperCase();
+      let clientMap = abOrders.get(c);
+      if (!clientMap) {
+        clientMap = new Map();
+        abOrders.set(c, clientMap);
+      }
+      const cur = clientMap.get(r.pedido) ?? { temFracao: false, temCaixa: false };
       if ((r.fracionado || 0) > 0) cur.temFracao = true;
       if ((r.caixas || 0) > 0) cur.temCaixa = true;
-      pedidosAB.set(r.pedido, cur);
+      clientMap.set(r.pedido, cur);
     }
-    let pedAB_caixaFechada = 0;
-    let pedAB_fracionado = 0;
-    for (const v of pedidosAB.values()) {
-      if (v.temFracao) pedAB_fracionado++;
-      else if (v.temCaixa) pedAB_caixaFechada++;
-    }
-    const pedAB_total = pedidosAB.size;
+
+    const relatorioAB = Array.from(abOrders.entries()).map(([cliente, map]) => {
+      let caixa = 0;
+      let fracao = 0;
+      for (const v of map.values()) {
+        if (v.temFracao) fracao++;
+        else if (v.temCaixa) caixa++;
+      }
+      return { cliente, caixa, fracao, total: caixa + fracao };
+    });
 
     return {
       linhas, linhasSep, linhasCko,
       pedidos, pedidosSep, pedidosCko, pedidosProduzidos: pedidosProduzidos.size,
       skus, unidades, expedidos,
       caixasFechadas, unidFracionadas,
-      pedAB_caixaFechada, pedAB_fracionado, pedAB_total,
+      relatorioAB,
     };
   }, [filtered, faseMap]);
 
@@ -233,13 +264,7 @@ function DashboardPage() {
       .slice(0, 8);
   }, [filtered]);
 
-  const fracVsCaixa = useMemo(
-    () => [
-      { name: "Caixa fechada", value: kpis.pedAB_caixaFechada },
-      { name: "Fracionado", value: kpis.pedAB_fracionado },
-    ],
-    [kpis],
-  );
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
   const pedidosTable = useMemo(() => {
     const map = new Map<
@@ -262,8 +287,6 @@ function DashboardPage() {
     }
     return Array.from(map.values()).sort((a, b) => b.linhas - a.linhas).slice(0, 200);
   }, [filtered, faseMap]);
-
-  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
 
   const C = {
     primary: "oklch(0.65 0.15 155)",
@@ -311,6 +334,14 @@ function DashboardPage() {
               </SelectContent>
             </Select>
           )}
+          <Button
+            variant="outline"
+            className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+            onClick={() => exportDashboardExcel({ wku: filtered, wxd: filteredWxd, kpis, faseMap })}
+            disabled={!selected || loading}
+          >
+            <Download className="size-4" /> Exportar Planilha
+          </Button>
           <Button variant="outline" asChild>
             <Link to="/historico"><History className="size-4" />Histórico</Link>
           </Button>
@@ -375,110 +406,101 @@ function DashboardPage() {
               </div>
             </Card>
 
-            {loading ? (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
-              </div>
-            ) : (
-              <>
-                {/* Bloco PEDIDOS */}
-                <div>
-                  <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-                    <Package className="size-3.5" /> Pedidos
-                  </h2>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <KpiCard
-                      icon={Calendar} label="Produzidos no dia" value={kpis.pedidosProduzidos.toLocaleString("pt-BR")}
-                      sub="Têm Dt. Conf. Sep."
-                    />
-                    <KpiCard
-                      icon={CheckCheck} label="Separados (% Sep = 100)"
-                      value={kpis.pedidosSep.toLocaleString("pt-BR")}
-                      sub={`de ${kpis.pedidos} total`}
-                      progress={pct(kpis.pedidosSep, kpis.pedidos)}
-                    />
-                    <KpiCard
-                      icon={PackageCheck} label="Checkout (% Cko = 100)"
-                      value={kpis.pedidosCko.toLocaleString("pt-BR")}
-                      sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`}
-                      progress={pct(kpis.pedidosCko, kpis.pedidos)}
-                    />
-                    <KpiCard
-                      icon={Truck} label="Embarcados (Emb. Conf.)"
-                      value={kpis.expedidos.toLocaleString("pt-BR")}
-                      sub="Sit. Fase = Emb. Conf."
-                      progress={pct(kpis.expedidos, kpis.pedidos)}
-                      gold
-                    />
-                  </div>
-                </div>
+            <Tabs defaultValue="overview" className="w-full space-y-6">
+              <TabsList className="bg-muted/50 p-1">
+                <TabsTrigger value="overview" className="gap-2">
+                  <BarChart3 className="size-4" /> Resumo Geral
+                </TabsTrigger>
+                <TabsTrigger value="expedicao" className="gap-2">
+                  <Truck className="size-4" /> Expedição (WXD)
+                </TabsTrigger>
+                <TabsTrigger value="pedidos" className="gap-2">
+                  <ClipboardList className="size-4" /> Detalhes por Pedido
+                </TabsTrigger>
+                <TabsTrigger value="produtos" className="gap-2">
+                  <Boxes className="size-4" /> Produtos e Clientes
+                </TabsTrigger>
+              </TabsList>
 
-                {/* Bloco ITENS */}
-                <div>
-                  <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
-                    <Layers className="size-3.5" /> Itens
-                  </h2>
+              <TabsContent value="overview" className="space-y-6">
+                {loading ? (
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <KpiCard
-                      icon={Tag} label="Total de itens (Qt. Ítem)"
-                      value={kpis.unidades.toLocaleString("pt-BR")}
-                      sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`}
-                    />
-                    <KpiCard
-                      icon={Boxes} label="SKUs distintos (Cód. Merc.)"
-                      value={kpis.skus.toLocaleString("pt-BR")}
-                      sub="produtos únicos no dia"
-                    />
-                    <KpiCard
-                      icon={PackageCheck} label="Caixas fechadas — APICE/BEAUTY"
-                      value={kpis.caixasFechadas.toLocaleString("pt-BR")}
-                      sub="Qt.Ítem ÷ Fator (inteiro)"
-                      gold
-                    />
-                    <KpiCard
-                      icon={Package} label="Unidades fracionadas — APICE/BEAUTY"
-                      value={kpis.unidFracionadas.toLocaleString("pt-BR")}
-                      sub="resto da divisão (quebra)"
-                      gold
-                    />
+                    {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
                   </div>
-                </div>
-
-                {/* Caixas vs Fração: % de pedidos */}
-                {kpis.pedAB_total > 0 && (
-                  <Card className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold">Caixas vs Fração — APICE / BEAUTY</h3>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          % de pedidos com somente caixa fechada × pedidos com fração ({kpis.pedAB_total} pedidos A/B)
-                        </p>
+                ) : (
+                  <>
+                    {/* Bloco PEDIDOS */}
+                    <div>
+                      <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+                        <Package className="size-3.5" /> Pedidos
+                      </h2>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <KpiCard
+                          icon={Calendar} label="Produzidos no dia" value={kpis.pedidosProduzidos.toLocaleString("pt-BR")}
+                          sub="Têm Dt. Conf. Sep."
+                        />
+                        <KpiCard
+                          icon={CheckCheck} label="Separados (% Sep = 100)"
+                          value={kpis.pedidosSep.toLocaleString("pt-BR")}
+                          sub={`de ${kpis.pedidos} total`}
+                          progress={pct(kpis.pedidosSep, kpis.pedidos)}
+                        />
+                        <KpiCard
+                          icon={PackageCheck} label="Checkout (% Cko = 100)"
+                          value={kpis.pedidosCko.toLocaleString("pt-BR")}
+                          sub={`${kpis.linhasCko.toLocaleString("pt-BR")} linhas`}
+                          progress={pct(kpis.pedidosCko, kpis.pedidos)}
+                        />
+                        <KpiCard
+                          icon={Truck} label="Embarcados (Emb. Conf.)"
+                          value={kpis.expedidos.toLocaleString("pt-BR")}
+                          sub="Sit. Fase = Emb. Conf."
+                          progress={pct(kpis.expedidos, kpis.pedidos)}
+                          gold
+                        />
                       </div>
                     </div>
-                    <div className="grid lg:grid-cols-2 gap-6 items-center">
-                      <div className="space-y-4">
+
+                    {/* Bloco ITENS */}
+                    <div>
+                      <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
+                        <Layers className="size-3.5" /> Itens
+                      </h2>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <KpiCard
+                          icon={Tag} label="Total de itens (Qt. Ítem)"
+                          value={kpis.unidades.toLocaleString("pt-BR")}
+                          sub={`${kpis.linhas.toLocaleString("pt-BR")} linhas WKU`}
+                        />
+                        <KpiCard
+                          icon={Boxes} label="SKUs distintos (Cód. Merc.)"
+                          value={kpis.skus.toLocaleString("pt-BR")}
+                          sub="produtos únicos no dia"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Funil */}
+                    <Card className="p-6">
+                      <h3 className="font-semibold mb-4">Funil da operação (pedidos)</h3>
+                      <div className="space-y-3">
                         {[
-                          {
-                            label: "Caixas fechadas (sem fração)",
-                            v: kpis.pedAB_caixaFechada,
-                            color: C.primary,
-                          },
-                          {
-                            label: "Pedidos com fração",
-                            v: kpis.pedAB_fracionado,
-                            color: C.gold,
-                          },
+                          { label: "Total de pedidos", v: kpis.pedidos, color: "color-mix(in oklab, var(--muted-foreground) 50%, transparent)" },
+                          { label: "Produzidos (têm Dt. Sep.)", v: kpis.pedidosProduzidos, color: C.blue },
+                          { label: "Separados 100%", v: kpis.pedidosSep, color: C.primary },
+                          { label: "Checkout 100%", v: kpis.pedidosCko, color: C.glow },
+                          { label: "Embarcados (Emb. Conf.)", v: kpis.expedidos, color: C.gold },
                         ].map((s) => {
-                          const p = pct(s.v, kpis.pedAB_total);
+                          const p = pct(s.v, kpis.pedidos);
                           return (
                             <div key={s.label}>
                               <div className="flex items-center justify-between text-sm mb-1.5">
-                                <span className="font-medium">{s.label}</span>
+                                <span>{s.label}</span>
                                 <span className="text-muted-foreground tabular-nums">
-                                  {s.v} ({p}%)
+                                  {s.v.toLocaleString("pt-BR")} ({p}%)
                                 </span>
                               </div>
-                              <div className="h-3 rounded-full bg-muted overflow-hidden">
+                              <div className="h-3 rounded-full bg-muted/60 overflow-hidden">
                                 <div
                                   className="h-full transition-all rounded-full"
                                   style={{ width: `${p}%`, background: s.color }}
@@ -488,18 +510,15 @@ function DashboardPage() {
                           );
                         })}
                       </div>
-                      <ResponsiveContainer width="100%" height={220}>
-                        <PieChart>
-                          <Pie
-                            data={fracVsCaixa}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%" cy="50%"
-                            innerRadius={55} outerRadius={90}
-                            paddingAngle={3}
-                          >
-                            {fracVsCaixa.map((_, i) => <Cell key={i} fill={PIE[i]} />)}
-                          </Pie>
+                    </Card>
+
+                    <Card className="p-6">
+                      <h3 className="font-semibold mb-4">Separações por hora</h3>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={porHora}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                          <XAxis dataKey="hora" stroke="var(--muted-foreground)" fontSize={12} />
+                          <YAxis stroke="var(--muted-foreground)" fontSize={12} />
                           <Tooltip
                             contentStyle={{
                               background: "var(--card)",
@@ -507,73 +526,126 @@ function DashboardPage() {
                               borderRadius: 8,
                             }}
                           />
-                          <Legend />
-                        </PieChart>
+                          <Line
+                            type="monotone" dataKey="separado"
+                            stroke={C.primary} strokeWidth={2.5}
+                            dot={{ fill: C.primary, r: 3 }}
+                          />
+                        </LineChart>
                       </ResponsiveContainer>
-                    </div>
-                  </Card>
+                    </Card>
+                  </>
                 )}
+              </TabsContent>
 
-                {/* Funil */}
-                <Card className="p-6">
-                  <h3 className="font-semibold mb-4">Funil da operação (pedidos)</h3>
-                  <div className="space-y-3">
-                    {[
-                      { label: "Total de pedidos", v: kpis.pedidos, color: "color-mix(in oklab, var(--muted-foreground) 50%, transparent)" },
-                      { label: "Produzidos (têm Dt. Sep.)", v: kpis.pedidosProduzidos, color: C.blue },
-                      { label: "Separados 100%", v: kpis.pedidosSep, color: C.primary },
-                      { label: "Checkout 100%", v: kpis.pedidosCko, color: C.glow },
-                      { label: "Embarcados (Emb. Conf.)", v: kpis.expedidos, color: C.gold },
-                    ].map((s) => {
-                      const p = pct(s.v, kpis.pedidos);
-                      return (
-                        <div key={s.label}>
-                          <div className="flex items-center justify-between text-sm mb-1.5">
-                            <span>{s.label}</span>
-                            <span className="text-muted-foreground tabular-nums">
-                              {s.v.toLocaleString("pt-BR")} ({p}%)
-                            </span>
-                          </div>
-                          <div className="h-3 rounded-full bg-muted/60 overflow-hidden">
-                            <div
-                              className="h-full transition-all rounded-full"
-                              style={{ width: `${p}%`, background: s.color }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+              <TabsContent value="expedicao" className="space-y-6">
+                <Card className="p-0 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold">Planilha de Expedição (WXD)</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Registros importados da planilha WXD
+                      </p>
+                    </div>
+                    <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                      {wxd.length} registros
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Pedido</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Situação Fase</TableHead>
+                          <TableHead>Data Embarque</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredWxd.slice(0, 500).map((r, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-mono text-xs">{r.pedido}</TableCell>
+                            <TableCell className="text-sm">{r.cliente}</TableCell>
+                            <TableCell>
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full ${
+                                  r.sit_fase === "Emb. Conf." 
+                                    ? "bg-primary/10 text-primary" 
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {r.sit_fase}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {r.dt_embarque ? new Date(r.dt_embarque).toLocaleString("pt-BR") : "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredWxd.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                              Nenhum registro de expedição encontrado.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
                 </Card>
+              </TabsContent>
 
-                {/* Charts */}
+              <TabsContent value="pedidos" className="space-y-6">
+                <Card className="p-0 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h3 className="font-semibold">Pedidos detalhados</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Top 200 ordenados por nº de linhas
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Pedido</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead className="text-right">Sep 100%</TableHead>
+                          <TableHead className="text-right">Cko 100%</TableHead>
+                          <TableHead>Sit. Fase</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pedidosTable.map((p) => (
+                          <TableRow key={p.pedido}>
+                            <TableCell className="font-mono text-xs">{p.pedido}</TableCell>
+                            <TableCell className="text-sm max-w-[260px] truncate">{p.cliente}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.sep}</TableCell>
+                            <TableCell className="text-right tabular-nums">{p.cko}</TableCell>
+                            <TableCell>
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={
+                                  p.fase === "Emb. Conf."
+                                    ? { background: "color-mix(in oklab, var(--primary) 20%, transparent)", color: "var(--primary)" }
+                                    : { background: "var(--muted)", color: "var(--muted-foreground)" }
+                                }
+                              >
+                                {p.fase}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="produtos" className="space-y-6">
                 <div className="grid lg:grid-cols-2 gap-6">
                   <Card className="p-6">
-                    <h3 className="font-semibold mb-4">Separações por hora</h3>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <LineChart data={porHora}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                        <XAxis dataKey="hora" stroke="var(--muted-foreground)" fontSize={12} />
-                        <YAxis stroke="var(--muted-foreground)" fontSize={12} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                          }}
-                        />
-                        <Line
-                          type="monotone" dataKey="separado"
-                          stroke={C.primary} strokeWidth={2.5}
-                          dot={{ fill: C.primary, r: 3 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Card>
-
-                  <Card className="p-6">
                     <h3 className="font-semibold mb-4">Top clientes (pedidos)</h3>
-                    <ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={320}>
                       <BarChart data={topClientes} layout="vertical" margin={{ left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                         <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
@@ -594,9 +666,47 @@ function DashboardPage() {
                       </BarChart>
                     </ResponsiveContainer>
                   </Card>
+
+                  {/* Caixas vs Fração: % de pedidos */}
+                  {kpis.relatorioAB.length > 0 && (
+                    <div className="space-y-6">
+                      {kpis.relatorioAB.map((rel) => (
+                        <div key={rel.cliente} className="rounded-lg overflow-hidden border border-border bg-card">
+                          <div className="bg-[#1B4228] text-white py-2 text-center font-bold text-sm tracking-wide flex items-center justify-center gap-2">
+                            <Package className="size-4" /> {rel.cliente}
+                          </div>
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-[#2E593F] hover:bg-[#2E593F]">
+                                <TableHead className="text-white text-center font-bold h-8">TIPO</TableHead>
+                                <TableHead className="text-white text-center font-bold h-8 border-l border-[#1B4228]/20">Nº PEDIDOS</TableHead>
+                                <TableHead className="text-white text-center font-bold h-8 border-l border-[#1B4228]/20">% DO TOTAL</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              <TableRow className="bg-[#C8E6C9] hover:bg-[#C8E6C9]">
+                                <TableCell className="text-center font-semibold text-[#0A2616] py-2">Caixa Fechada</TableCell>
+                                <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-[#A5D6A7] border-dashed">{rel.caixa}</TableCell>
+                                <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-[#A5D6A7] border-dashed">{pct(rel.caixa, rel.total).toFixed(1)}%</TableCell>
+                              </TableRow>
+                              <TableRow className="bg-white hover:bg-white">
+                                <TableCell className="text-center font-semibold text-[#0A2616] py-2">Fração</TableCell>
+                                <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-gray-200 border-dashed">{rel.fracao}</TableCell>
+                                <TableCell className="text-center font-medium text-[#0A2616] py-2 border-l border-gray-200 border-dashed">{pct(rel.fracao, rel.total).toFixed(1)}%</TableCell>
+                              </TableRow>
+                              <TableRow className="bg-[#2E593F] hover:bg-[#2E593F]">
+                                <TableCell className="text-center font-bold text-white py-2">TOTAL</TableCell>
+                                <TableCell className="text-center font-bold text-white py-2 border-l border-[#1B4228]/20">{rel.total}</TableCell>
+                                <TableCell className="text-center font-bold text-white py-2 border-l border-[#1B4228]/20">100.0%</TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Top SKUs */}
                 <Card className="p-6">
                   <h3 className="font-semibold mb-4">Top 15 SKUs por quantidade de itens</h3>
                   <ResponsiveContainer width="100%" height={420}>
@@ -620,59 +730,8 @@ function DashboardPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
-
-                {/* Tabela */}
-                <Card className="p-0 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-border">
-                    <h3 className="font-semibold">Pedidos detalhados</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Top 200 ordenados por nº de linhas
-                    </p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Pedido</TableHead>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead className="text-right">Linhas</TableHead>
-                          <TableHead className="text-right">Sep 100%</TableHead>
-                          <TableHead className="text-right">Cko 100%</TableHead>
-                          <TableHead className="text-right">Caixas</TableHead>
-                          <TableHead className="text-right">Frac.</TableHead>
-                          <TableHead>Sit. Fase</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {pedidosTable.map((p) => (
-                          <TableRow key={p.pedido}>
-                            <TableCell className="font-mono text-xs">{p.pedido}</TableCell>
-                            <TableCell className="text-sm max-w-[260px] truncate">{p.cliente}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.linhas}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.sep}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.cko}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.caixas || "—"}</TableCell>
-                            <TableCell className="text-right tabular-nums">{p.und || "—"}</TableCell>
-                            <TableCell>
-                              <span
-                                className="text-xs px-2 py-0.5 rounded-full"
-                                style={
-                                  p.fase === "Emb. Conf."
-                                    ? { background: "color-mix(in oklab, var(--primary) 20%, transparent)", color: "var(--primary)" }
-                                    : { background: "var(--muted)", color: "var(--muted-foreground)" }
-                                }
-                              >
-                                {p.fase}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </Card>
-              </>
-            )}
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </main>

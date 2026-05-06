@@ -144,7 +144,7 @@ export type WkuComputed = WkuRaw & {
   is_apice_beauty: boolean;
 };
 
-const APICE_BEAUTY = /apice|beauty/i;
+const APICE_BEAUTY = /apice|ápice|beauty/i;
 
 /**
  * Calcula caixas/fracionado APENAS para clientes APICE e BEAUTY.

@@ -14,32 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
+      analysis_snapshots: {
+        Row: {
+          analysis_data: Json
+          client_name: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          analysis_data: Json
+          client_name: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          analysis_data?: Json
+          client_name?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      app_users: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          password: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          password: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          password?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      snapshot_items: {
+        Row: {
+          boxes: number | null
+          client: string | null
+          factor: number | null
+          fractional: number | null
+          hour: number | null
+          id: string
+          is_checkout: boolean | null
+          is_expedited: boolean | null
+          order_number: string
+          phase: string | null
+          qty: number
+          sku: string
+          timestamp: string | null
+          upload_id: string | null
+        }
+        Insert: {
+          boxes?: number | null
+          client?: string | null
+          factor?: number | null
+          fractional?: number | null
+          hour?: number | null
+          id?: string
+          is_checkout?: boolean | null
+          is_expedited?: boolean | null
+          order_number: string
+          phase?: string | null
+          qty: number
+          sku: string
+          timestamp?: string | null
+          upload_id?: string | null
+        }
+        Update: {
+          boxes?: number | null
+          client?: string | null
+          factor?: number | null
+          fractional?: number | null
+          hour?: number | null
+          id?: string
+          is_checkout?: boolean | null
+          is_expedited?: boolean | null
+          order_number?: string
+          phase?: string | null
+          qty?: number
+          sku?: string
+          timestamp?: string | null
+          upload_id?: string | null
+        }
+        Relationships: []
+      }
       uploads: {
         Row: {
+          created_at: string | null
           id: string
+          nome: string | null
           notes: string | null
           reference_date: string | null
-          uploaded_at: string
           user_id: string | null
           wku_count: number
           wmg_count: number
           wxd_count: number
         }
         Insert: {
+          created_at?: string | null
           id?: string
+          nome?: string | null
           notes?: string | null
           reference_date?: string | null
-          uploaded_at?: string
           user_id?: string | null
           wku_count?: number
           wmg_count?: number
           wxd_count?: number
         }
         Update: {
+          created_at?: string | null
           id?: string
+          nome?: string | null
           notes?: string | null
           reference_date?: string | null
-          uploaded_at?: string
           user_id?: string | null
           wku_count?: number
           wmg_count?: number
@@ -61,7 +160,7 @@ export type Database = {
           pedido: string | null
           qt_item: number | null
           sku: string | null
-          upload_id: string
+          upload_id: string | null
         }
         Insert: {
           caixas?: number
@@ -76,7 +175,7 @@ export type Database = {
           pedido?: string | null
           qt_item?: number | null
           sku?: string | null
-          upload_id: string
+          upload_id?: string | null
         }
         Update: {
           caixas?: number
@@ -91,11 +190,11 @@ export type Database = {
           pedido?: string | null
           qt_item?: number | null
           sku?: string | null
-          upload_id?: string
+          upload_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "wku_rows_upload_id_fkey"
+            foreignKeyName: "wku_linhas_upload_id_fkey"
             columns: ["upload_id"]
             isOneToOne: false
             referencedRelation: "uploads"
@@ -109,25 +208,25 @@ export type Database = {
           id: number
           nome: string | null
           sku: string | null
-          upload_id: string
+          upload_id: string | null
         }
         Insert: {
           fator?: number | null
           id?: number
           nome?: string | null
           sku?: string | null
-          upload_id: string
+          upload_id?: string | null
         }
         Update: {
           fator?: number | null
           id?: number
           nome?: string | null
           sku?: string | null
-          upload_id?: string
+          upload_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "wmg_rows_upload_id_fkey"
+            foreignKeyName: "wmg_fatores_upload_id_fkey"
             columns: ["upload_id"]
             isOneToOne: false
             referencedRelation: "uploads"
@@ -142,7 +241,7 @@ export type Database = {
           id: number
           pedido: string | null
           sit_fase: string | null
-          upload_id: string
+          upload_id: string | null
         }
         Insert: {
           cliente?: string | null
@@ -150,7 +249,7 @@ export type Database = {
           id?: number
           pedido?: string | null
           sit_fase?: string | null
-          upload_id: string
+          upload_id?: string | null
         }
         Update: {
           cliente?: string | null
@@ -158,11 +257,11 @@ export type Database = {
           id?: number
           pedido?: string | null
           sit_fase?: string | null
-          upload_id?: string
+          upload_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "wdu_rows_upload_id_fkey"
+            foreignKeyName: "wdu_fases_upload_id_fkey"
             columns: ["upload_id"]
             isOneToOne: false
             referencedRelation: "uploads"

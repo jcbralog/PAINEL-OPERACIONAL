@@ -271,7 +271,8 @@ function DashboardPage() {
     const m = new Map<string, number>();
     for (const r of filtered) {
       if (!r.dt_conf_sep || r.pct_sep !== 100) continue;
-      const h = new Date(r.dt_conf_sep).toISOString().slice(0, 13) + ":00";
+      const d = new Date(r.dt_conf_sep);
+      const h = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
       m.set(h, (m.get(h) ?? 0) + 1);
     }
     return Array.from(m.entries())

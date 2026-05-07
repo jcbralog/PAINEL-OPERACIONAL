@@ -365,14 +365,13 @@ function DashboardPage() {
               <SelectTrigger className="w-[300px]">
                 <SelectValue placeholder="Selecionar upload" />
               </SelectTrigger>
-              <SelectContent>
-                {uploads.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
-                    {u.reference_date ?? new Date(u.uploaded_at).toLocaleDateString("pt-BR")} ·{" "}
-                    {u.wku_count} linhas
+                    {new Date(u.uploaded_at).toLocaleDateString("pt-BR")} -{" "}
+                    {new Date(u.uploaded_at).toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </SelectItem>
-                ))}
-              </SelectContent>
             </Select>
           )}
           <Button

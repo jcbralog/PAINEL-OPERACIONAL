@@ -23,8 +23,9 @@ import {
 } from "recharts";
 import {
   BarChart3, Boxes, CheckCheck, History, Package, PackageCheck,
-  Truck, Upload, Layers, Tag, Calendar, Sparkles, ClipboardList, Download,
+  Truck, Upload, Layers, Tag, Calendar, ClipboardList, Download,
 } from "lucide-react";
+import brologLogo from "@/assets/bralog_logo.png";
 import { exportDashboardExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/dashboard")({
@@ -347,18 +348,15 @@ function DashboardPage() {
         style={{ background: "color-mix(in oklab, var(--background) 90%, transparent)" }}
       >
         <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
-          <div className="flex items-center gap-2.5 font-bold tracking-tight">
-            <div
-              className="size-8 rounded-lg flex items-center justify-center"
-              style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
-            >
-              <Sparkles className="size-4 text-primary-foreground" />
-            </div>
-            <div>
-              <div className="text-sm leading-tight">BRALOG</div>
-              <div className="text-[10px] text-muted-foreground tracking-widest uppercase">
-                Painel Operacional
-              </div>
+          <div className="flex items-center gap-3">
+            <img
+              src={brologLogo}
+              alt="Bralog Logística"
+              className="h-10 w-auto object-contain"
+              style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.18))" }}
+            />
+            <div className="text-[10px] text-muted-foreground tracking-widest uppercase leading-tight">
+              Painel Operacional
             </div>
           </div>
           <div className="flex-1" />

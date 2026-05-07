@@ -248,11 +248,11 @@ function UploadPage() {
     <div className="min-h-screen bg-background">
       <Toaster />
       <header className="border-b border-border">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-2">
           <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
             ← Dashboard
           </Link>
-          <span className="text-sm text-muted-foreground">Bralog · Painel Operacional</span>
+          <span className="text-sm text-muted-foreground text-center md:text-left">Bralog · Painel Operacional</span>
         </div>
       </header>
       <main className="max-w-4xl mx-auto px-6 py-10">
@@ -262,12 +262,12 @@ function UploadPage() {
         </p>
 
         <Tabs defaultValue="full" className="mt-8 space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="full" className="gap-2">
-              <Layers className="size-4" /> Upload Completo (WKU + WMG + WXD)
+          <TabsList className="flex flex-col h-auto md:grid w-full md:grid-cols-2 gap-1 p-1">
+            <TabsTrigger value="full" className="gap-2 w-full whitespace-normal h-auto py-2">
+              <Layers className="size-4 shrink-0" /> Upload Completo (WKU + WMG + WXD)
             </TabsTrigger>
-            <TabsTrigger value="wxd" className="gap-2">
-              <Truck className="size-4" /> Somente Expedição (WXD)
+            <TabsTrigger value="wxd" className="gap-2 w-full whitespace-normal h-auto py-2">
+              <Truck className="size-4 shrink-0" /> Somente Expedição (WXD)
             </TabsTrigger>
           </TabsList>
 

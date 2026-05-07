@@ -348,8 +348,8 @@ function DashboardPage() {
         className="border-b border-border/60 sticky top-0 z-10 backdrop-blur"
         style={{ background: "color-mix(in oklab, var(--background) 90%, transparent)" }}
       >
-        <div className="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-[1500px] mx-auto px-6 py-3 flex flex-col md:flex-row items-center gap-4">
+          <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start">
             <img
               src={brologLogo}
               alt="Bralog Logística"
@@ -360,10 +360,10 @@ function DashboardPage() {
               Painel Operacional
             </div>
           </div>
-          <div className="flex-1" />
+          <div className="flex-1 hidden md:block" />
           {uploads.length > 0 && (
             <Select value={selected ?? ""} onValueChange={(v) => setSelected(v)}>
-              <SelectTrigger className="w-[300px]">
+              <SelectTrigger className="w-full md:w-[300px]">
                 <SelectValue placeholder="Selecionar upload" />
               </SelectTrigger>
               <SelectContent>
@@ -379,20 +379,22 @@ function DashboardPage() {
               </SelectContent>
             </Select>
           )}
-          <Button
-            variant="outline"
-            className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-            onClick={() => exportDashboardExcel({ wku: filtered, wxd: filteredWxd, kpis, faseMap, kpiOrder })}
-            disabled={!selected || loading}
-          >
-            <Download className="size-4" /> Exportar Planilha
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/historico"><History className="size-4" />Histórico</Link>
-          </Button>
-          <Button onClick={() => nav({ to: "/upload" })}>
-            <Upload className="size-4" />Novo upload
-          </Button>
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <Button
+              variant="outline"
+              className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 w-full md:w-auto"
+              onClick={() => exportDashboardExcel({ wku: filtered, wxd: filteredWxd, kpis, faseMap, kpiOrder })}
+              disabled={!selected || loading}
+            >
+              <Download className="size-4" /> Exportar Planilha
+            </Button>
+            <Button variant="outline" className="w-full md:w-auto" asChild>
+              <Link to="/historico"><History className="size-4" />Histórico</Link>
+            </Button>
+            <Button className="w-full md:w-auto" onClick={() => nav({ to: "/upload" })}>
+              <Upload className="size-4" />Novo upload
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -417,15 +419,15 @@ function DashboardPage() {
 
         {selected && (
           <>
-            <Card className="p-4 flex flex-wrap gap-3 items-center">
+            <Card className="p-4 flex flex-col md:flex-row flex-wrap gap-3 items-center">
               <Input
                 placeholder="Buscar pedido, SKU ou nome..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="max-w-xs"
+                className="w-full md:max-w-xs"
               />
               <Select value={clienteFilter} onValueChange={setClienteFilter}>
-                <SelectTrigger className="w-[240px]">
+                <SelectTrigger className="w-full md:w-[240px]">
                   <SelectValue placeholder="Cliente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -434,7 +436,7 @@ function DashboardPage() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full md:w-[200px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -445,24 +447,24 @@ function DashboardPage() {
                   <SelectItem value="pendente">Pendentes</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="flex-1" />
-              <div className="text-xs text-muted-foreground">
+              <div className="flex-1 hidden md:block" />
+              <div className="text-xs text-muted-foreground w-full md:w-auto text-center md:text-left">
                 {kpis.linhas.toLocaleString("pt-BR")} linhas · {kpis.pedidos.toLocaleString("pt-BR")} pedidos
               </div>
             </Card>
 
             <Tabs defaultValue="overview" className="w-full space-y-6">
-              <TabsList className="bg-muted/50 p-1">
-                <TabsTrigger value="overview" className="gap-2">
+              <TabsList className="bg-muted/50 p-1 h-auto flex flex-col md:flex-row flex-wrap w-full">
+                <TabsTrigger value="overview" className="gap-2 w-full md:w-auto">
                   <BarChart3 className="size-4" /> Resumo Geral
                 </TabsTrigger>
-                <TabsTrigger value="expedicao" className="gap-2">
+                <TabsTrigger value="expedicao" className="gap-2 w-full md:w-auto">
                   <Truck className="size-4" /> Expedição (WXD)
                 </TabsTrigger>
-                <TabsTrigger value="pedidos" className="gap-2">
+                <TabsTrigger value="pedidos" className="gap-2 w-full md:w-auto">
                   <ClipboardList className="size-4" /> Detalhes por Pedido
                 </TabsTrigger>
-                <TabsTrigger value="produtos" className="gap-2">
+                <TabsTrigger value="produtos" className="gap-2 w-full md:w-auto">
                   <Boxes className="size-4" /> Produtos e Clientes
                 </TabsTrigger>
               </TabsList>
@@ -479,7 +481,7 @@ function DashboardPage() {
                       <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold mb-3 flex items-center gap-2">
                         <Package className="size-3.5" /> KPIs — clique e arraste para reordenar
                       </h2>
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
                         {kpiOrder.map((id) => {
                           const cardDragProps = {
                             draggable: true,
@@ -727,9 +729,12 @@ function DashboardPage() {
                 {/* Detalhamento por Pedido — LARGURA TOTAL, acima de Top SKUs */}
                 {kpis.abPedidos.length > 0 && (
                   <div className="rounded-lg overflow-hidden border border-border bg-card">
-                    <div className="bg-[#0A2616] text-white py-3 px-4 font-bold text-sm tracking-wide flex items-center gap-2">
-                      <Package className="size-4" /> DETALHAMENTO POR PEDIDO — APICE E BEAUTY
-                      <span className="ml-auto text-xs font-normal opacity-70">Caixas fechadas e unidades fracionadas por pedido</span>
+                    <div className="bg-[#0A2616] text-white py-3 px-4 font-bold text-sm tracking-wide flex flex-col md:flex-row items-start md:items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Package className="size-4 shrink-0" /> 
+                        <span>DETALHAMENTO POR PEDIDO</span>
+                      </div>
+                      <span className="md:ml-auto text-xs font-normal opacity-70 mt-1 md:mt-0">Caixas fechadas e unidades fracionadas por pedido</span>
                     </div>
                     <Table>
                       <TableHeader>

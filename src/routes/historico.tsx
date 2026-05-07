@@ -42,9 +42,9 @@ function HistoricoPage() {
     <div className="min-h-screen bg-background">
       <Toaster />
       <header className="border-b border-border">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">← Dashboard</Link>
-          <Button asChild><Link to="/upload"><Upload className="size-4" />Novo upload</Link></Button>
+        <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <Link to="/dashboard" className="text-sm text-muted-foreground hover:text-foreground w-full md:w-auto text-center md:text-left">← Dashboard</Link>
+          <Button asChild className="w-full md:w-auto"><Link to="/upload"><Upload className="size-4" />Novo upload</Link></Button>
         </div>
       </header>
       <main className="max-w-5xl mx-auto px-6 py-10">

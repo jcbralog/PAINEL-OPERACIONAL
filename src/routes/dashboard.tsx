@@ -280,6 +280,33 @@ function DashboardPage() {
       .map(([k, v]) => ({ hora: k.slice(11, 16), separado: v }));
   }, [filtered]);
 
+  const porHoraCliente = useMemo(() => {
+    const m = new Map<string, Record<string, number>>();
+    const clientesSet = new Set<string>();
+
+    for (const r of filtered) {
+      if (!r.dt_conf_sep || r.pct_sep !== 100) continue;
+      const cliente = r.cliente || "Desconhecido";
+      clientesSet.add(cliente);
+      
+      const d = new Date(r.dt_conf_sep);
+      const h = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
+      
+      if (!m.has(h)) {
+        m.set(h, {});
+      }
+      
+      const hourData = m.get(h)!;
+      hourData[cliente] = (hourData[cliente] || 0) + 1;
+    }
+
+    const data = Array.from(m.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => ({ hora: k.slice(11, 16), ...v }));
+
+    return { data, clientes: Array.from(clientesSet).sort() };
+  }, [filtered]);
+
   const topSkus = useMemo(() => {
     const m = new Map<string, { qt: number; nome: string }>();
     for (const r of filtered) {
@@ -341,6 +368,18 @@ function DashboardPage() {
     blue: "oklch(0.55 0.10 200)",
   };
   const PIE = [C.primary, C.gold];
+
+  const CHART_COLORS = [
+    C.primary,
+    C.gold,
+    C.blue,
+    C.red,
+    "oklch(0.70 0.15 300)", // purple
+    "oklch(0.75 0.15 50)",  // orange
+    "oklch(0.60 0.10 250)", // indigo
+    "oklch(0.80 0.15 120)", // yellow-green
+    "oklch(0.65 0.12 180)", // teal
+  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -564,6 +603,36 @@ function DashboardPage() {
                             dot={{ fill: C.primary, r: 3 }}
                           />
                         </LineChart>
+                      </ResponsiveContainer>
+                    </Card>
+
+                    <Card className="p-6">
+                      <h3 className="font-semibold mb-4 uppercase tracking-[0.1em] text-sm flex items-center gap-2">
+                        <History className="size-4" /> SEPARAÇÃO POR CLIENTE
+                      </h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={porHoraCliente.data}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                          <XAxis dataKey="hora" stroke="var(--muted-foreground)" fontSize={12} />
+                          <YAxis stroke="var(--muted-foreground)" fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              background: "var(--card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 8,
+                            }}
+                          />
+                          <Legend wrapperStyle={{ paddingTop: "20px" }} />
+                          {porHoraCliente.clientes.map((cliente, idx) => (
+                            <Bar
+                              key={cliente}
+                              dataKey={cliente}
+                              name={cliente}
+                              fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                              radius={[4, 4, 0, 0]}
+                            />
+                          ))}
+                        </BarChart>
                       </ResponsiveContainer>
                     </Card>
                   </>

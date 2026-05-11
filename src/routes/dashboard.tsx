@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -91,9 +91,36 @@ function KpiCard({
   );
 }
 
+/**
+ * Formata o título do upload:
+ * - Dia ATUAL  → "SEGUNDA-FEIRA: 11/05/2026 · 17:28"  (inclui hora do import)
+ * - Dia ANTERIOR → "SEXTA-FEIRA: 08/05/2026"           (sem hora — resumo fechado)
+ */
+function formatUploadTitle(u: UploadRow): string {
+  const dateStr = u.reference_date ?? u.uploaded_at.slice(0, 10);
+  // Adiciona horário do meio-dia para evitar problema de fuso horário
+  const d = new Date(dateStr + "T12:00:00");
+  const day = d.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
+  const date = d.toLocaleDateString("pt-BR");
+
+  // Verifica se é o dia de hoje (compara apenas a parte da data)
+  const today = new Date().toISOString().slice(0, 10);
+  const isToday = dateStr === today;
+
+  if (isToday) {
+    // Hora do import (quando o arquivo foi enviado)
+    const time = new Date(u.uploaded_at).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${day}: ${date} · ${time}`;
+  }
+
+  return `${day}: ${date}`;
+}
+
 function DashboardPage() {
   const { id } = Route.useSearch();
-  const nav = useNavigate();
 
   const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [selected, setSelected] = useState<string | null>(id ?? null);
@@ -400,24 +427,21 @@ function DashboardPage() {
             </div>
           </div>
           <div className="flex-1 hidden md:block" />
-          {uploads.length > 0 && (
-            <Select value={selected ?? ""} onValueChange={(v) => setSelected(v)}>
-              <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue placeholder="Selecionar upload" />
-              </SelectTrigger>
-              <SelectContent>
-                {uploads.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {new Date(u.uploaded_at).toLocaleDateString("pt-BR")} -{" "}
-                    {new Date(u.uploaded_at).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          {/* Título do upload selecionado — mostra o DIA DA SEMANA e a data de referência */}
+          {selected && uploads.length > 0 && (() => {
+            const u = uploads.find((x) => x.id === selected);
+            return u ? (
+              <div className="flex items-center gap-2.5 px-4 py-2 rounded-lg border border-primary/30 bg-primary/8 select-none">
+                <Calendar className="size-4 text-primary shrink-0" />
+                <span
+                  className="font-bold text-sm tracking-widest uppercase"
+                  style={{ color: "var(--primary)" }}
+                >
+                  {formatUploadTitle(u)}
+                </span>
+              </div>
+            ) : null;
+          })()}
           <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
             <Button
               variant="outline"
@@ -429,9 +453,6 @@ function DashboardPage() {
             </Button>
             <Button variant="outline" className="w-full md:w-auto" asChild>
               <Link to="/historico"><History className="size-4" />Histórico</Link>
-            </Button>
-            <Button className="w-full md:w-auto" onClick={() => nav({ to: "/upload" })}>
-              <Upload className="size-4" />Novo upload
             </Button>
           </div>
         </div>

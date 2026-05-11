@@ -101,12 +101,44 @@ async function chunkInsert<T>(
   }
 }
 
+/** Retorna a data local no formato YYYY-MM-DD sem depender do fuso UTC */
+function localDateStr(offset = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() - offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Formata data YYYY-MM-DD como "DIA-DA-SEMANA: DD/MM/AAAA [· HH:MM]" igual ao dashboard */
+function previewTitle(dateStr: string, isToday: boolean): string {
+  const d = new Date(dateStr + "T12:00:00");
+  const day = d.toLocaleDateString("pt-BR", { weekday: "long" }).toUpperCase();
+  const date = d.toLocaleDateString("pt-BR");
+  if (isToday) {
+    const now = new Date();
+    const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return `${day}: ${date} · ${time}`;
+  }
+  return `${day}: ${date}`;
+}
+
 function UploadPage() {
   const nav = useNavigate();
   const [wku, setWku] = useState<File | null>(null);
   const [wmgs, setWmgs] = useState<(File | null)[]>([null]);
   const [wxd, setWxd] = useState<File | null>(null);
-  const [refDate, setRefDate] = useState<string>(new Date().toISOString().slice(0, 10));
+
+  // Modo de referência temporal
+  type RefMode = "today" | "yesterday" | "other";
+  const [refMode, setRefMode] = useState<RefMode>("today");
+  const [refDate, setRefDate] = useState<string>(localDateStr(0));
+
+  const handleRefMode = (mode: RefMode) => {
+    setRefMode(mode);
+    if (mode === "today") setRefDate(localDateStr(0));
+    if (mode === "yesterday") setRefDate(localDateStr(1));
+    // "other": mantém o refDate atual para o usuário ajustar
+  };
+
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState<string>("");
@@ -308,11 +340,59 @@ function UploadPage() {
                 onClear={() => setWxd(null)}
               />
 
-              <div className="grid md:grid-cols-2 gap-4 pt-2">
-                <div className="space-y-2">
-                  <Label>Data de referência</Label>
-                  <Input type="date" value={refDate} onChange={(e) => setRefDate(e.target.value)} />
+              {/* ─── Referência temporal ─── */}
+              <div className="space-y-3 pt-2">
+                <Label>Quando é essa operação?</Label>
+
+                {/* Botões de seleção rápida */}
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { mode: "today"     as const, label: "📅 Hoje" },
+                    { mode: "yesterday" as const, label: "🌙 Ontem" },
+                    { mode: "other"     as const, label: "📆 Outro dia" },
+                  ]).map(({ mode, label }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => handleRefMode(mode)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        refMode === mode
+                          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                          : "border-border bg-muted/40 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+
+                {/* Picker só aparece em "Outro dia" */}
+                {refMode === "other" && (
+                  <Input
+                    type="date"
+                    value={refDate}
+                    onChange={(e) => setRefDate(e.target.value)}
+                    className="max-w-xs"
+                  />
+                )}
+
+                {/* Preview de como vai aparecer no painel */}
+                {refDate && (
+                  <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                    <span className="text-primary mt-0.5">🔖</span>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Como vai aparecer no painel:</p>
+                      <p className="font-bold text-sm tracking-wider" style={{ color: "var(--primary)" }}>
+                        {previewTitle(refDate, refMode === "today")}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {refMode === "today"
+                          ? "Operação em andamento — hora atualizada a cada import"
+                          : "Operação encerrada — hora não exibida (resumo do dia)"}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {busy && (

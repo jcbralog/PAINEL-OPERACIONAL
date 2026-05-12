@@ -424,6 +424,45 @@ function DashboardPage() {
     return Array.from(map.values()).sort((a, b) => b.linhas - a.linhas).slice(0, 200);
   }, [filtered, faseMap]);
 
+  type PedidoRow = { pedido: string; cliente: string; linhas: number; sep: number; cko: number; caixas: number; und: number; fase: string };
+
+  const [pedidoColumnFilters, setPedidoColumnFilters] = useState<Record<string, Set<string> | null>>({
+    pedido: null, cliente: null, sep: null, cko: null, fase: null,
+  });
+  const [pedidoDropdownSearch, setPedidoDropdownSearch] = useState<Record<string, string>>({});
+
+  const PEDIDOS_COLUMNS = [
+    { key: "pedido" as const, label: "Pedido" },
+    { key: "cliente" as const, label: "Cliente" },
+    { key: "sep" as const, label: "Sep 100%" },
+    { key: "cko" as const, label: "Cko 100%" },
+    { key: "fase" as const, label: "Sit. Fase" },
+  ];
+
+  function getPedidoColValue(r: PedidoRow, key: string): string {
+    return String(r[key as keyof PedidoRow] ?? "—");
+  }
+
+  const pedidoUniqueValues = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const col of PEDIDOS_COLUMNS) {
+      const vals = new Set(pedidosTable.map((r) => getPedidoColValue(r, col.key)));
+      result[col.key] = Array.from(vals).sort();
+    }
+    return result;
+  }, [pedidosTable]);
+
+  const filteredPedidos = useMemo(() => {
+    return pedidosTable.filter((r) => {
+      for (const col of PEDIDOS_COLUMNS) {
+        const active = pedidoColumnFilters[col.key];
+        if (!active) continue;
+        if (!active.has(getPedidoColValue(r, col.key))) return false;
+      }
+      return true;
+    });
+  }, [pedidosTable, pedidoColumnFilters]);
+
   const C = {
     primary: "oklch(0.65 0.15 155)",
     glow: "oklch(0.78 0.18 152)",
@@ -853,17 +892,104 @@ function DashboardPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Pedido</TableHead>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead className="text-right">Sep 100%</TableHead>
-                          <TableHead className="text-right">Cko 100%</TableHead>
-                          <TableHead>Sit. Fase</TableHead>
+                          {PEDIDOS_COLUMNS.map((col) => {
+                            const activeVals = pedidoColumnFilters[col.key];
+                            const allValues = pedidoUniqueValues[col.key] ?? [];
+                            const isActive = activeVals !== null && activeVals.size < allValues.length;
+                            const ds = pedidoDropdownSearch[col.key] ?? "";
+                            const filteredVals = ds
+                              ? allValues.filter((v) => v.toLowerCase().includes(ds.toLowerCase()))
+                              : allValues;
+                            const isNumeric = col.key === "sep" || col.key === "cko";
+                            return (
+                              <TableHead key={col.key} className={isNumeric ? "text-right" : ""}>
+                                <DropdownMenu
+                                  onOpenChange={(open) => {
+                                    if (open) {
+                                      setPedidoColumnFilters((prev) => ({
+                                        ...prev,
+                                        [col.key]: prev[col.key] ?? new Set(allValues),
+                                      }));
+                                      setPedidoDropdownSearch((prev) => ({ ...prev, [col.key]: "" }));
+                                    }
+                                  }}
+                                >
+                                  <DropdownMenuTrigger className={`flex items-center gap-1.5 outline-none select-none ${isNumeric ? "justify-end w-full" : ""}`}>
+                                    <span>{col.label}</span>
+                                    <Filter className={`size-3 ${isActive ? "text-primary" : "text-muted-foreground/30"}`} />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start" className="max-h-80">
+                                    <div className="px-2 pt-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        className="w-full text-xs px-2 py-1 rounded border border-border bg-background outline-none"
+                                        placeholder="Buscar..."
+                                        value={ds}
+                                        onChange={(e) =>
+                                          setPedidoDropdownSearch((prev) => ({ ...prev, [col.key]: e.target.value }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="flex gap-3 px-3 py-1">
+                                      <button
+                                        className="text-xs text-primary hover:underline"
+                                        onClick={() =>
+                                          setPedidoColumnFilters((prev) => ({
+                                            ...prev,
+                                            [col.key]: new Set(allValues),
+                                          }))
+                                        }
+                                      >
+                                        Selecionar Todos
+                                      </button>
+                                      <button
+                                        className="text-xs text-muted-foreground hover:underline"
+                                        onClick={() =>
+                                          setPedidoColumnFilters((prev) => ({
+                                            ...prev,
+                                            [col.key]: new Set<string>(),
+                                          }))
+                                        }
+                                      >
+                                        Limpar
+                                      </button>
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto">
+                                      {filteredVals.map((v) => (
+                                        <DropdownMenuCheckboxItem
+                                          key={v}
+                                          checked={activeVals?.has(v) ?? true}
+                                          onCheckedChange={(checked) => {
+                                            setPedidoColumnFilters((prev) => {
+                                              const next = new Set(prev[col.key] ?? allValues);
+                                              if (checked) next.add(v);
+                                              else next.delete(v);
+                                              return { ...prev, [col.key]: next };
+                                            });
+                                          }}
+                                        >
+                                          <span className="truncate max-w-[200px]">{v}</span>
+                                        </DropdownMenuCheckboxItem>
+                                      ))}
+                                    </div>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableHead>
+                            );
+                          })}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {pedidosTable.map((p) => (
+                        {filteredPedidos.map((p) => (
                           <TableRow key={p.pedido}>
-                            <TableCell className="font-mono text-xs">{p.pedido}</TableCell>
+                            <TableCell
+                              className="font-mono text-xs cursor-pointer hover:text-primary transition-colors"
+                              onClick={() => {
+                                navigator.clipboard.writeText(p.pedido);
+                                toast.success(`Pedido ${p.pedido} copiado!`);
+                              }}
+                            >
+                              {p.pedido}
+                            </TableCell>
                             <TableCell className="text-sm max-w-[260px] truncate">{p.cliente}</TableCell>
                             <TableCell className="text-right tabular-nums">{p.sep}</TableCell>
                             <TableCell className="text-right tabular-nums">{p.cko}</TableCell>

@@ -18,12 +18,16 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
   BarChart3, Boxes, CheckCheck, History, Package, PackageCheck,
-  Truck, Upload, Layers, Tag, Calendar, ClipboardList, Download,
+  Truck, Upload, Layers, Tag, Calendar, ClipboardList, Download, Filter,
 } from "lucide-react";
 import brologLogo from "@/assets/bralog_logo.png";
 import { exportDashboardExcel } from "@/lib/exportExcel";
@@ -131,6 +135,34 @@ function DashboardPage() {
   const [search, setSearch] = useState("");
   const [clienteFilter, setClienteFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [columnFilters, setColumnFilters] = useState<Record<string, Set<string> | null>>({
+    pedido: null, cliente: null, sit_fase: null, dt_embarque: null,
+  });
+  const [dropdownSearch, setDropdownSearch] = useState<Record<string, string>>({});
+
+  const COLUMNS = useMemo(() => [
+    { key: "pedido" as const, label: "Pedido" },
+    { key: "cliente" as const, label: "Cliente" },
+    { key: "sit_fase" as const, label: "Situação Fase" },
+    { key: "dt_embarque" as const, label: "Data Embarque" },
+  ], []);
+
+  function getColValue(r: WxdRow, key: string): string {
+    const v = r[key as keyof WxdRow];
+    if (key === "dt_embarque" && v) {
+      return new Date(v).toLocaleString("pt-BR");
+    }
+    return v ?? "—";
+  }
+
+  const columnUniqueValues = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const col of COLUMNS) {
+      const vals = new Set(wxd.map((r) => getColValue(r, col.key)));
+      result[col.key] = Array.from(vals).sort();
+    }
+    return result;
+  }, [wxd, COLUMNS]);
 
   // Drag-and-drop state for KPI cards
   type KpiId = "produzidos" | "separados" | "checkout" | "embarcados" | "itens" | "skus";
@@ -212,9 +244,14 @@ function DashboardPage() {
     return wxd.filter((r) => {
       if (clienteFilter !== "all" && r.cliente !== clienteFilter) return false;
       if (q && !`${r.pedido ?? ""} ${r.sit_fase ?? ""}`.toLowerCase().includes(q)) return false;
+      for (const col of COLUMNS) {
+        const active = columnFilters[col.key];
+        if (!active) continue;
+        if (!active.has(getColValue(r, col.key))) return false;
+      }
       return true;
     });
-  }, [wxd, search, clienteFilter]);
+  }, [wxd, search, clienteFilter, columnFilters, COLUMNS]);
 
   // KPIs principais
   const kpis = useMemo(() => {
@@ -677,16 +714,103 @@ function DashboardPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Pedido</TableHead>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Situação Fase</TableHead>
-                          <TableHead>Data Embarque</TableHead>
+                          {COLUMNS.map((col) => {
+                            const activeVals = columnFilters[col.key];
+                            const allValues = columnUniqueValues[col.key] ?? [];
+                            const isActive = activeVals !== null && activeVals.size < allValues.length;
+                            const ds = dropdownSearch[col.key] ?? "";
+                            const filteredVals = ds
+                              ? allValues.filter((v) => v.toLowerCase().includes(ds.toLowerCase()))
+                              : allValues;
+                            return (
+                              <TableHead key={col.key}>
+                                <DropdownMenu
+                                  onOpenChange={(open) => {
+                                    if (open) {
+                                      setColumnFilters((prev) => ({
+                                        ...prev,
+                                        [col.key]: prev[col.key] ?? new Set(allValues),
+                                      }));
+                                      setDropdownSearch((prev) => ({ ...prev, [col.key]: "" }));
+                                    }
+                                  }}
+                                >
+                                  <DropdownMenuTrigger className="flex items-center gap-1.5 outline-none select-none">
+                                    <span>{col.label}</span>
+                                    <Filter className={`size-3 ${isActive ? "text-primary" : "text-muted-foreground/30"}`} />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start" className="max-h-80">
+                                    <div className="px-2 pt-1.5 pb-1" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        className="w-full text-xs px-2 py-1 rounded border border-border bg-background outline-none"
+                                        placeholder="Buscar..."
+                                        value={ds}
+                                        onChange={(e) =>
+                                          setDropdownSearch((prev) => ({ ...prev, [col.key]: e.target.value }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="flex gap-3 px-3 py-1">
+                                      <button
+                                        className="text-xs text-primary hover:underline"
+                                        onClick={() =>
+                                          setColumnFilters((prev) => ({
+                                            ...prev,
+                                            [col.key]: new Set(allValues),
+                                          }))
+                                        }
+                                      >
+                                        Selecionar Todos
+                                      </button>
+                                      <button
+                                        className="text-xs text-muted-foreground hover:underline"
+                                        onClick={() =>
+                                          setColumnFilters((prev) => ({
+                                            ...prev,
+                                            [col.key]: new Set<string>(),
+                                          }))
+                                        }
+                                      >
+                                        Limpar
+                                      </button>
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto">
+                                      {filteredVals.map((v) => (
+                                        <DropdownMenuCheckboxItem
+                                          key={v}
+                                          checked={activeVals?.has(v) ?? true}
+                                          onCheckedChange={(checked) => {
+                                            setColumnFilters((prev) => {
+                                              const next = new Set(prev[col.key] ?? allValues);
+                                              if (checked) next.add(v);
+                                              else next.delete(v);
+                                              return { ...prev, [col.key]: next };
+                                            });
+                                          }}
+                                        >
+                                          <span className="truncate max-w-[200px]">{v}</span>
+                                        </DropdownMenuCheckboxItem>
+                                      ))}
+                                    </div>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableHead>
+                            );
+                          })}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredWxd.slice(0, 500).map((r, i) => (
                           <TableRow key={i}>
-                            <TableCell className="font-mono text-xs">{r.pedido}</TableCell>
+                            <TableCell
+                              className="font-mono text-xs cursor-pointer hover:text-primary transition-colors"
+                              onClick={() => {
+                                navigator.clipboard.writeText(r.pedido ?? "");
+                                toast.success(`Pedido ${r.pedido} copiado!`);
+                              }}
+                            >
+                              {r.pedido}
+                            </TableCell>
                             <TableCell className="text-sm">{r.cliente}</TableCell>
                             <TableCell>
                               <span
@@ -700,7 +824,7 @@ function DashboardPage() {
                               </span>
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
-                              {r.dt_embarque ? new Date(r.dt_embarque).toLocaleString("pt-BR") : "—"}
+                              {getColValue(r, "dt_embarque")}
                             </TableCell>
                           </TableRow>
                         ))}
